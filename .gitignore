@@ -37,3 +37,10 @@ next-env.d.ts
 # IDE
 .idea
 .vscode
+
+# uploaded files
+data/uploads/*.jpg
+data/uploads/*.jpeg
+data/uploads/*.png
+data/uploads/*.heic
+data/uploads/*.pdf
