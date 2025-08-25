@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import SearchableCustomerInput from "./SearchableCustomerInput";
 
 interface TransactionFormModalProps {
   open: boolean;
@@ -35,8 +36,8 @@ export default function TransactionFormModal({
     status: ""
   });
   const [loading, setLoading] = useState(false);
-  const [customers, setCustomers] = useState<Array<{ id: string; full_name: string }>>([]);
   const [cardOptions, setCardOptions] = useState<Array<{ card_number: string; card_name: string }>>([]);
+  const [initialCustomerName, setInitialCustomerName] = useState<string>("");
 
   // Define the tax and MDR rates structure
   const TAX_MDR_RATES = {
@@ -98,25 +99,27 @@ export default function TransactionFormModal({
         status: ""
       });
     }
-  }, [initial, open]);
+    }, [initial, open]);
 
-  // Load customers
+  // Load initial customer name when editing
   useEffect(() => {
-    async function loadCustomers() {
-      try {
-        const res = await fetch('/api/customers');
-        const data = await res.json();
-        setCustomers(data || []);
-      } catch (err) {
-        console.error('Error loading customers:', err);
-        setCustomers([]);
+    async function loadInitialCustomerName() {
+      if (initial?.customer_id && open) {
+        try {
+          const res = await fetch(`/api/customers/${initial.customer_id}`);
+          const customerData = await res.json();
+          setInitialCustomerName(customerData.full_name || "");
+        } catch (err) {
+          console.error('Error loading initial customer name:', err);
+          setInitialCustomerName("");
+        }
+      } else {
+        setInitialCustomerName("");
       }
     }
     
-    if (open) {
-      loadCustomers();
-    }
-  }, [open]);
+    loadInitialCustomerName();
+  }, [initial?.customer_id, open]);
 
   // Load card options when customer changes
   useEffect(() => {
@@ -340,18 +343,11 @@ export default function TransactionFormModal({
               {/* Customer Field */}
               <div className="mb-4">
                 <label className="block text-xs text-gray-400 mb-1">Customer</label>
-                <select
-                  value={values.customer_id}
-                  onChange={(e) => handleChange('customer_id', e.target.value)}
-                  className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-                >
-                  <option value="">Select Customer...</option>
-                  {customers.map((customer) => (
-                    <option key={customer.id} value={customer.id}>
-                      {customer.full_name}
-                    </option>
-                  ))}
-                </select>
+                <SearchableCustomerInput
+                  onChange={(customerId) => handleChange('customer_id', customerId)}
+                  placeholder="Search customers by name, email, or phone..."
+                  initialCustomerName={initialCustomerName}
+                />
               </div>
 
               {/* Card Number Field */}

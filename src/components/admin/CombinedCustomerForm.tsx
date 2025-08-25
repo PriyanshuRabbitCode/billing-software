@@ -325,6 +325,30 @@ export default function CombinedCustomerForm({
           console.error('Error checking email uniqueness:', error);
         }
       }
+      
+      // Check for unique contact number
+      if (f.name === 'contact_no' && v) {
+        try {
+          const response = await fetch('/api/check-customer-unique', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              field: 'contact_no',
+              value: v,
+              customerId: initialCustomer?.id
+            })
+          });
+
+          const data = await response.json();
+          if (data.formatError) {
+            e.contact_no = data.formatError;
+          } else if (data.exists) {
+            e.contact_no = "This contact number is already registered with another customer";
+          }
+        } catch (error) {
+          console.error('Error checking contact number uniqueness:', error);
+        }
+      }
     }
     
     // Only validate tax fields if any of them are filled
@@ -357,6 +381,30 @@ export default function CombinedCustomerForm({
               e[`tax_${f.name}`] = data.formatError;
             } else if (data.exists) {
               e[`tax_${f.name}`] = `This PAN number is already registered with another customer`;
+            }
+          } catch (error) {
+            console.error(`Error checking ${f.name} uniqueness:`, error);
+          }
+        }
+        
+        // Check for unique Aadhaar number
+        if (v && f.name === 'aadhaar_no') {
+          try {
+            const response = await fetch('/api/check-customer-unique', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                field: f.name,
+                value: v,
+                customerId: initialCustomer?.id
+              })
+            });
+
+            const data = await response.json();
+            if (data.formatError) {
+              e[`tax_${f.name}`] = data.formatError;
+            } else if (data.exists) {
+              e[`tax_${f.name}`] = `This Aadhaar number is already registered with another customer`;
             }
           } catch (error) {
             console.error(`Error checking ${f.name} uniqueness:`, error);

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import SearchableCustomerInput from "./SearchableCustomerInput";
 
 export type FieldType =
   | "text"
@@ -175,57 +176,72 @@ export default function CrudFormModal<T>({
                 </select>
               )}
               {(f.type === "enum" || f.type === "select") && (
-                <select
-                  value={values[f.name] ?? ""}
-                  onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
-                  className="bg-gray-800 border border-gray-700 rounded px-3 py-2"
-                >
-                  <option value="">Select...</option>
-                  {f.name === 'card_name' ? (
-                    // Filter card options based on selected bank and type
-                    f.enumValues
-                      ?.filter(card => {
-                        const bankPrefix = values['bank_name']?.split(' ')[0];
-                        const cardType = values['card_type']?.split(' ')[0];
-                        return bankPrefix && cardType ? 
-                          card.startsWith(bankPrefix) && card.includes(cardType) : true;
-                      })
-                      .map((opt) => (
-                        <option key={opt} value={opt}>
-                          {opt}
-                        </option>
-                      ))
+                <>
+                  {f.name === 'customer_id' ? (
+                    <SearchableCustomerInput
+                      onChange={(customerId) => setValues({ ...values, [f.name]: customerId })}
+                      placeholder="Search customers by name, email, or phone..."
+                      error={errors[f.name]}
+                      initialCustomerName={
+                        (initial as any)?.[f.name] 
+                          ? options[f.name]?.find(opt => opt.value === (initial as any)[f.name])?.label
+                          : undefined
+                      }
+                    />
                   ) : (
-                    // Regular enum options
-                    f.enumValues?.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))
+                    <select
+                      value={values[f.name] ?? ""}
+                      onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
+                      className="bg-gray-800 border border-gray-700 rounded px-3 py-2"
+                    >
+                      <option value="">Select...</option>
+                      {f.name === 'card_name' ? (
+                        // Filter card options based on selected bank and type
+                        f.enumValues
+                          ?.filter(card => {
+                            const bankPrefix = values['bank_name']?.split(' ')[0];
+                            const cardType = values['card_type']?.split(' ')[0];
+                            return bankPrefix && cardType ? 
+                              card.startsWith(bankPrefix) && card.includes(cardType) : true;
+                          })
+                          .map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt}
+                            </option>
+                          ))
+                      ) : (
+                        // Regular enum options
+                        f.enumValues?.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))
+                      )}
+                      {f.relation && options[f.name]?.map((opt) => {
+                        // For customer selection in tax details, check for existing details
+                        if (f.relation?.table === 'customers' && values['pan_no']) {
+                          return (
+                            <option 
+                              key={opt.value} 
+                              value={opt.value}
+                              style={{ 
+                                backgroundColor: values['pan_no'] ? '#4a5568' : undefined,
+                                fontWeight: values['pan_no'] ? 'bold' : undefined
+                              }}
+                            >
+                              {opt.label} {values['pan_no'] ? `(PAN: ${values['pan_no']})` : ''}
+                            </option>
+                          );
+                        }
+                        return (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        );
+                      })}
+                    </select>
                   )}
-                  {f.relation && options[f.name]?.map((opt) => {
-                    // For customer selection in tax details, check for existing details
-                    if (f.relation?.table === 'customers' && values['pan_no']) {
-                      return (
-                        <option 
-                          key={opt.value} 
-                          value={opt.value}
-                          style={{ 
-                            backgroundColor: values['pan_no'] ? '#4a5568' : undefined,
-                            fontWeight: values['pan_no'] ? 'bold' : undefined
-                          }}
-                        >
-                          {opt.label} {values['pan_no'] ? `(PAN: ${values['pan_no']})` : ''}
-                        </option>
-                      );
-                    }
-                    return (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    );
-                  })}
-                </select>
+                </>
               )}
               {errors[f.name] && (
                 <span className="text-xs text-red-400">{errors[f.name]}</span>

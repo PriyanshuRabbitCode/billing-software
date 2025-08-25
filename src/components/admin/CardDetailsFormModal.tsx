@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { CrudField } from "./CrudFormModal";
 import { schemas } from "@/lib/tableSchemas";
+import SearchableCustomerInput from "./SearchableCustomerInput";
 
 interface CardDetailsFormModalProps {
   open: boolean;
@@ -80,29 +81,28 @@ export default function CardDetailsFormModal({
     }
   }, [initial, open, fields]);
 
-  // Load customer options
+  // Load customer options for initial value display
   useEffect(() => {
     let active = true;
-    async function loadRelations() {
-      const relationFields = fields.filter((f) => f.relation);
-      if (relationFields.length === 0) return;
-      const loaded: Record<string, Array<{ value: any; label: string }>> = {};
-      for (const f of relationFields) {
-        try {
-          const res = await fetch(`/api/rel/${f.relation!.table}`);
-          const list = (await res.json()) as Array<Record<string, any>>;
-          loaded[f.name] = list.map((r) => ({ value: r[f.relation!.valueField], label: r[f.relation!.labelField] }));
-        } catch (e) {
-          loaded[f.name] = [];
+    async function loadCustomerOptions() {
+      try {
+        const res = await fetch(`/api/rel/customers`);
+        const list = (await res.json()) as Array<Record<string, any>>;
+        const customerOptions = list.map((r) => ({ value: r.id, label: r.full_name }));
+        if (active) {
+          setOptions(prev => ({ ...prev, customer_id: customerOptions }));
+        }
+      } catch (e) {
+        if (active) {
+          setOptions(prev => ({ ...prev, customer_id: [] }));
         }
       }
-      if (active) setOptions(loaded);
     }
-    loadRelations();
+    loadCustomerOptions();
     return () => {
       active = false;
     };
-  }, [fields]);
+  }, []);
 
   // Update available card names based on selected bank and type
   const updateAvailableCards = (bankName: string, cardType: string) => {
@@ -260,21 +260,16 @@ export default function CardDetailsFormModal({
           {/* Customer Field */}
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-400">Customer *</label>
-            <select
-              value={values.customer_id ?? ""}
-              onChange={(e) => handleChange('customer_id', e.target.value)}
-              className="bg-gray-800 border border-gray-700 rounded px-3 py-2"
-            >
-              <option value="">Select Customer...</option>
-              {options.customer_id?.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            {errors.customer_id && (
-              <span className="text-xs text-red-400">{errors.customer_id}</span>
-            )}
+            <SearchableCustomerInput
+              onChange={(customerId) => handleChange('customer_id', customerId)}
+              placeholder="Search customers by name, email, or phone..."
+              error={errors.customer_id}
+              initialCustomerName={
+                initial?.customer_id 
+                  ? options.customer_id?.find(opt => opt.value === initial.customer_id)?.label
+                  : undefined
+              }
+            />
           </div>
 
           {/* Bank Name Field */}

@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Validate field name to prevent SQL injection
-    const allowedFields = ['email_id', 'pan_no', 'aadhaar_no'];
+    const allowedFields = ['email_id', 'pan_no', 'aadhaar_no', 'contact_no'];
     if (!allowedFields.includes(field)) {
       return NextResponse.json({ error: "Invalid field" }, { status: 400 });
     }
@@ -67,6 +67,12 @@ export async function POST(req: NextRequest) {
       const aadhaarRegex = /^[0-9]{12}$/;
       if (!aadhaarRegex.test(value)) {
         formatError = "Invalid Aadhaar format. Should be 12 digits";
+      }
+    } else if (field === 'contact_no') {
+      // Contact number format validation (10 digits, optionally with country code)
+      const contactRegex = /^(\+91\s?)?[6-9]\d{9}$/;
+      if (!contactRegex.test(value)) {
+        formatError = "Invalid contact number format. Should be 10 digits starting with 6-9, optionally with +91 country code";
       }
     }
 
