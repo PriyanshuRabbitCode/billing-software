@@ -6,6 +6,7 @@ import DataTable from "@/components/admin/DataTable";
 import CombinedCustomerForm from "@/components/admin/CombinedCustomerForm";
 import CustomerViewModal from "@/components/admin/CustomerViewModal";
 import { schemas } from "@/lib/tableSchemas";
+import PopupModal from "@/components/ui/PopupModal";
 
 const schema = schemas.customers;
 
@@ -14,7 +15,22 @@ export default function CustomersPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
   const [viewing, setViewing] = useState<any | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
+  const [popup, setPopup] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    type: "info" | "success" | "warning" | "error";
+    showCancel?: boolean;
+    onConfirm?: () => void;
+    confirmText?: string;
+    cancelText?: string;
+  }>({
+    open: false,
+    title: "",
+    message: "",
+    type: "info"
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,9 +113,19 @@ export default function CustomersPage() {
     } catch (err) {
       console.error('Save error:', err);
       if (err instanceof Error) {
-        alert(`Error saving record: ${err.message}`);
+        setPopup({
+          open: true,
+          title: "Error",
+          message: `Error saving record: ${err.message}`,
+          type: "error"
+        });
       } else {
-        alert('Error saving record');
+        setPopup({
+          open: true,
+          title: "Error",
+          message: "Error saving record",
+          type: "error"
+        });
       }
       throw err;
     }
@@ -109,41 +135,73 @@ export default function CustomersPage() {
     console.log('Delete called with row:', row);
     
     if (!row || !row.id) {
-      alert('Invalid row data for deletion');
+      setPopup({
+        open: true,
+        title: "Error",
+        message: "Invalid row data for deletion",
+        type: "error"
+      });
       return;
     }
     
-    if (!confirm("Delete this customer and all related records (tax details, identity documents, accounts, card details, transactions)?")) return;
-    
-    try {
-      console.log(`Attempting to delete customer ${row.id}`);
-      const res = await fetch(`/api/${schema.table}/${row.id}`, { 
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      
-      console.log('Delete response status:', res.status);
-      
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('Failed to delete customer:', errorData);
-        throw new Error(errorData.error || `HTTP ${res.status}: ${res.statusText}`);
+    setPopup({
+      open: true,
+      title: "Confirm Deletion",
+      message: "Delete this customer and all related records (tax details, identity documents, accounts, card details, transactions)?",
+      type: "warning",
+      showCancel: true,
+      confirmText: "Delete",
+      cancelText: "Cancel",
+      onConfirm: async () => {
+        try {
+          console.log(`Attempting to delete customer ${row.id}`);
+          const res = await fetch(`/api/${schema.table}/${row.id}`, { 
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' }
+          });
+          
+          console.log('Delete response status:', res.status);
+          
+          if (!res.ok) {
+            const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+            console.error('Failed to delete customer:', errorData);
+            throw new Error(errorData.error || `HTTP ${res.status}: ${res.statusText}`);
+          }
+          
+          const result = await res.json().catch(() => ({}));
+          console.log('Delete result:', result);
+          
+          console.log('Customer deleted successfully');
+          await load();
+          
+          // Show success message
+          setPopup({
+            open: true,
+            title: "Success",
+            message: "Customer deleted successfully",
+            type: "success"
+          });
+        } catch (error) {
+          console.error('Delete error:', error);
+          if (error instanceof Error) {
+            setPopup({
+              open: true,
+              title: "Error",
+              message: `Error deleting customer: ${error.message}`,
+              type: "error"
+            });
+          } else {
+            setPopup({
+              open: true,
+              title: "Error",
+              message: "Error deleting customer. Please check console for details.",
+              type: "error"
+            });
+          }
+        }
       }
-      
-      const result = await res.json().catch(() => ({}));
-      console.log('Delete result:', result);
-      
-      console.log('Customer deleted successfully');
-      await load();
-    } catch (error) {
-      console.error('Delete error:', error);
-      if (error instanceof Error) {
-        alert(`Error deleting customer: ${error.message}`);
-      } else {
-        alert('Error deleting customer. Please check console for details.');
-      }
-    }
-  };
+    });
+    };
 
   return (
     <div className="space-y-4">
@@ -186,6 +244,35 @@ export default function CustomersPage() {
         onClose={() => setViewing(null)}
         customer={viewing}
       />
+
+      <PopupModal
+        open={popup.open}
+        onClose={() => setPopup({ ...popup, open: false })}
+        title={popup.title}
+      >
+        <div className="text-center">
+          <p className="mb-4">{popup.message}</p>
+          {popup.showCancel && (
+            <div className="flex justify-center gap-3">
+              <button
+                onClick={() => {
+                  setPopup({ ...popup, open: false });
+                  popup.onConfirm?.();
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-500"
+              >
+                {popup.confirmText || "Confirm"}
+              </button>
+              <button
+                onClick={() => setPopup({ ...popup, open: false })}
+                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500"
+              >
+                {popup.cancelText || "Cancel"}
+              </button>
+            </div>
+          )}
+        </div>
+      </PopupModal>
     </div>
   );
 }

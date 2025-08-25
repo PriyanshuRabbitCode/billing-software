@@ -121,10 +121,11 @@ export async function POST(req: NextRequest) {
       missingColumnsAdded: missingColumns
     });
     
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error('Migration error:', e);
+    const errorMessage = e instanceof Error ? e.message : 'Unknown error occurred';
     return NextResponse.json({ 
-      error: e.message 
+      error: errorMessage 
     }, { status: 500 });
   }
 }

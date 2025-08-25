@@ -99,7 +99,7 @@ export default function DashboardPage() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-white">Dashboard</h1>
-          <p className="text-gray-400 mt-1">Welcome back! Here's what's happening with your business.</p>
+          <p className="text-gray-400 mt-1">Welcome back! Here&apos;s what&apos;s happening with your business.</p>
         </div>
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">

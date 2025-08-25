@@ -1,57 +1,57 @@
-import { NextRequest, NextResponse } from "next/server";
-import { query } from "@/lib/postgres";
+import { NextResponse } from 'next/server';
+import { query } from '@/lib/postgres';
 
 export const runtime = 'nodejs';
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    // Test database connection
-    const testQuery = await query('SELECT NOW() as current_time');
-    console.log('Database connection test:', testQuery.rows[0]);
+    console.log('Testing database connection...');
     
-    // Check transactions table structure
-    const transactionsColumns = await query(`
-      SELECT column_name, data_type, is_nullable, column_default
-      FROM information_schema.columns 
-      WHERE table_name = 'transactions' 
-      AND table_schema = 'public'
-      ORDER BY ordinal_position
+    // Test basic connection
+    const result = await query('SELECT NOW() as current_time');
+    console.log('Database connection successful:', result.rows[0]);
+    
+    // Test if required tables exist
+    const tables = await query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+      AND table_name IN ('customers', 'transactions', 'card_details', 'accounts')
+      ORDER BY table_name
     `);
     
-    // Check card_details table structure
-    const cardDetailsColumns = await query(`
-      SELECT column_name, data_type, is_nullable, column_default
-      FROM information_schema.columns 
-      WHERE table_name = 'card_details' 
-      AND table_schema = 'public'
-      ORDER BY ordinal_position
-    `);
+    const existingTables = tables.rows.map(row => row.table_name);
+    console.log('Existing tables:', existingTables);
     
-    // Check if there are any existing transactions
-    const transactionCount = await query('SELECT COUNT(*) as count FROM transactions');
+    // Check for missing tables
+    const requiredTables = ['customers', 'transactions', 'card_details', 'accounts'];
+    const missingTables = requiredTables.filter(table => !existingTables.includes(table));
     
-    // Check if there are any existing card_details
-    const cardDetailsCount = await query('SELECT COUNT(*) as count FROM card_details');
+    if (missingTables.length > 0) {
+      console.log('Missing tables:', missingTables);
+      return NextResponse.json({ 
+        status: 'warning',
+        message: 'Some required tables are missing',
+        existingTables,
+        missingTables
+      });
+    }
     
-    return NextResponse.json({
-      success: true,
-      databaseConnection: 'OK',
-      currentTime: testQuery.rows[0].current_time,
-      transactionsTable: {
-        columns: transactionsColumns.rows,
-        recordCount: transactionCount.rows[0].count
-      },
-      cardDetailsTable: {
-        columns: cardDetailsColumns.rows,
-        recordCount: cardDetailsCount.rows[0].count
-      }
+    return NextResponse.json({ 
+      status: 'success',
+      message: 'Database connection and tables are working correctly',
+      currentTime: result.rows[0].current_time,
+      existingTables
     });
     
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error('Database test error:', e);
+    const errorMessage = e instanceof Error ? e.message : 'Unknown error occurred';
+    
     return NextResponse.json({ 
-      error: e.message,
-      stack: e.stack
+      status: 'error',
+      message: 'Database connection failed',
+      error: errorMessage
     }, { status: 500 });
   }
 }

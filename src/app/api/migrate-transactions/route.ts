@@ -24,8 +24,9 @@ export async function GET(req: NextRequest) {
     }
     
     return NextResponse.json({ success: true, message: "Transactions table updated successfully" });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error('Error updating transactions table:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    const errorMessage = e instanceof Error ? e.message : 'Unknown error occurred';
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

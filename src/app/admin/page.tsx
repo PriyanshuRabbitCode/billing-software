@@ -1,12 +1,18 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { getCurrentUser, signOut } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
+
+interface User {
+  id: string;
+  email?: string;
+  role?: string;
+}
 
 export default function AdminPage() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
+  const [, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

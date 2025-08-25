@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CrudField } from "./CrudFormModal";
+import { useCallback, useEffect, useState } from "react";
+
 import { schemas } from "@/lib/tableSchemas";
 import SearchableCustomerInput from "./SearchableCustomerInput";
+import PopupModal from "../ui/PopupModal";
 
 interface CardDetailsFormModalProps {
   open: boolean;
   onClose: () => void;
-  initial: any | null;
-  onSubmit: (values: Record<string, any>) => Promise<void>;
+  initial: Record<string, unknown> | null;
+  onSubmit: (values: Record<string, unknown>) => Promise<void>;
   title: string;
 }
 
@@ -20,20 +21,63 @@ export default function CardDetailsFormModal({
   onSubmit,
   title,
 }: CardDetailsFormModalProps) {
-  const [values, setValues] = useState<Record<string, any>>({});
+  const [values, setValues] = useState<Record<string, string | number | boolean | null>>({});
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [options, setOptions] = useState<Record<string, Array<{ value: any; label: string }>>>({});
+  const [options, setOptions] = useState<Record<string, Array<{ value: unknown; label: string }>>>({});
   const [availableCards, setAvailableCards] = useState<string[]>([]);
+  const [popup, setPopup] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    type: "info" | "success" | "warning" | "error";
+    showCancel?: boolean;
+    onConfirm?: () => void;
+    confirmText?: string;
+    cancelText?: string;
+  }>({
+    open: false,
+    title: "",
+    message: "",
+    type: "info"
+  });
   
   const schema = schemas.card_details;
   const fields = schema.fields;
+
+  // Update available card names based on selected bank and type
+  const updateAvailableCards = useCallback((bankName: string, cardType: string) => {
+    if (!bankName || !cardType) {
+      setAvailableCards([]);
+      return;
+    }
+    
+    const cardOptions = schema.fields.find(f => f.name === 'card_name')?.enumValues || [];
+    const filtered = cardOptions.filter(card => 
+      card.startsWith(bankName.split(' ')[0]) && // Match bank prefix
+      card.includes(cardType.split(' ')[0]) // Match card type (Credit/Debit)
+    );
+    
+    setAvailableCards(filtered);
+    
+    // If current card name is not in filtered list, reset it
+    if (values.card_name && !filtered.includes(values.card_name as string)) {
+      setValues({...values, card_name: ""});
+    }
+  }, [schema.fields, values.card_name]);
 
   // Run migration when component mounts
   useEffect(() => {
     async function runMigration() {
       try {
-        await fetch('/api/migrate-card-details');
+        const response = await fetch('/api/migrate-card-details');
+        const data = await response.json();
+        
+        if (!response.ok) {
+          console.error('Migration failed:', data.error || 'Unknown error');
+        } else {
+          console.log('Migration successful:', data.message);
+        }
       } catch (error) {
         console.error('Migration error:', error);
       }
@@ -43,14 +87,14 @@ export default function CardDetailsFormModal({
 
   // Initialize form values when the modal opens or when editing
   useEffect(() => {
-    const v: Record<string, any> = {};
+    const v: Record<string, string | number | boolean | null> = {};
     fields.forEach((f) => {
       const initialValue = initial?.[f.name];
       if (initialValue !== undefined && initialValue !== null) {
         // Handle date fields - convert ISO string to YYYY-MM-DD format for HTML date input
         if (f.type === "datetime" && initialValue) {
           try {
-            const date = new Date(initialValue);
+            const date = new Date(initialValue as string);
             if (!isNaN(date.getTime())) {
               // Convert to local date in YYYY-MM-DD format for HTML date input
               const year = date.getFullYear();
@@ -66,7 +110,7 @@ export default function CardDetailsFormModal({
             v[f.name] = "";
           }
         } else {
-          v[f.name] = initialValue;
+          v[f.name] = initialValue as string | number | boolean | null;
         }
       } else {
         v[f.name] = f.type === "boolean" ? false : "";
@@ -77,9 +121,9 @@ export default function CardDetailsFormModal({
     
     // Update available cards if bank and type are set
     if (v.bank_name && v.card_type) {
-      updateAvailableCards(v.bank_name, v.card_type);
+      updateAvailableCards(v.bank_name as string, v.card_type as string);
     }
-  }, [initial, open, fields]);
+  }, [initial, open, fields, updateAvailableCards]);
 
   // Load customer options for initial value display
   useEffect(() => {
@@ -87,12 +131,12 @@ export default function CardDetailsFormModal({
     async function loadCustomerOptions() {
       try {
         const res = await fetch(`/api/rel/customers`);
-        const list = (await res.json()) as Array<Record<string, any>>;
-        const customerOptions = list.map((r) => ({ value: r.id, label: r.full_name }));
+        const list = (await res.json()) as Array<Record<string, string | number | boolean | null>>;
+        const customerOptions = list.map((r) => ({ value: r.id, label: r.full_name as string }));
         if (active) {
           setOptions(prev => ({ ...prev, customer_id: customerOptions }));
         }
-      } catch (e) {
+      } catch {
         if (active) {
           setOptions(prev => ({ ...prev, customer_id: [] }));
         }
@@ -104,38 +148,19 @@ export default function CardDetailsFormModal({
     };
   }, []);
 
-  // Update available card names based on selected bank and type
-  const updateAvailableCards = (bankName: string, cardType: string) => {
-    if (!bankName || !cardType) {
-      setAvailableCards([]);
-      return;
-    }
-    
-    const cardOptions = schema.fields.find(f => f.name === 'card_name')?.enumValues || [];
-    const filtered = cardOptions.filter(card => 
-      card.startsWith(bankName.split(' ')[0]) && // Match bank prefix
-      card.includes(cardType.split(' ')[0]) // Match card type (Credit/Debit)
-    );
-    
-    setAvailableCards(filtered);
-    
-    // If current card name is not in filtered list, reset it
-    if (values.card_name && !filtered.includes(values.card_name)) {
-      setValues({...values, card_name: ""});
-    }
-  };
+
 
   // Handle field change
-  const handleChange = (name: string, value: any) => {
+  const handleChange = (name: string, value: string | number | boolean | null) => {
     const newValues = { ...values, [name]: value };
     setValues(newValues);
     
     // Update available cards when bank or type changes
     if (name === 'bank_name' || name === 'card_type') {
-      updateAvailableCards(
-        name === 'bank_name' ? value : values.bank_name,
-        name === 'card_type' ? value : values.card_type
-      );
+              updateAvailableCards(
+          name === 'bank_name' ? value as string : values.bank_name as string,
+          name === 'card_type' ? value as string : values.card_type as string
+        );
     }
   };
 
@@ -158,14 +183,14 @@ export default function CardDetailsFormModal({
     
     if (!values.card_name) {
       e.card_name = "Card Name is required";
-    } else if (availableCards.length > 0 && !availableCards.includes(values.card_name)) {
+    } else if (availableCards.length > 0 && !availableCards.includes(values.card_name as string)) {
       e.card_name = "Selected card is not valid for the chosen bank and type";
     }
     
     // Validate card number format if provided
     if (values.card_number) {
       // Remove spaces and check if it's a valid card number format
-      const cardNumber = values.card_number.replace(/\s+/g, '');
+      const cardNumber = (values.card_number as string).replace(/\s+/g, '');
       
       // Validate exactly 16 digits
       if (!/^\d{16}$/.test(cardNumber)) {
@@ -184,8 +209,7 @@ export default function CardDetailsFormModal({
           if (data.exists && (!initial || initial.card_number !== values.card_number)) {
             e.card_number = "This card number already exists. Please enter a unique card number.";
           }
-        } catch (error) {
-          console.error('Error checking card number:', error);
+        } catch {
           e.card_number = "Error validating card number. Please try again.";
         }
       }
@@ -208,7 +232,7 @@ export default function CardDetailsFormModal({
     try {
       // Format card number with spaces for better readability if provided
       if (values.card_number) {
-        const cardNumber = values.card_number.replace(/\s+/g, '');
+        const cardNumber = (values.card_number as string).replace(/\s+/g, '');
         values.card_number = cardNumber.replace(/(\d{4})/g, '$1 ').trim();
       }
       
@@ -235,10 +259,20 @@ export default function CardDetailsFormModal({
         console.error('Error name:', error.name);
         console.error('Error message:', error.message);
         console.error('Error stack:', error.stack);
-        alert(`Error: ${error.message}`);
+        setPopup({
+          open: true,
+          title: "Error",
+          message: `Error: ${error.message}`,
+          type: "error"
+        });
       } else {
         console.error('Unknown error type:', typeof error);
-        alert('An unknown error occurred');
+        setPopup({
+          open: true,
+          title: "Error",
+          message: "An unknown error occurred",
+          type: "error"
+        });
       }
     } finally {
       setLoading(false);
@@ -276,7 +310,7 @@ export default function CardDetailsFormModal({
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-400">Bank Name *</label>
             <select
-              value={values.bank_name ?? ""}
+              value={(values.bank_name as string) ?? ""}
               onChange={(e) => handleChange('bank_name', e.target.value)}
               className="bg-gray-800 border border-gray-700 rounded px-3 py-2"
             >
@@ -296,7 +330,7 @@ export default function CardDetailsFormModal({
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-400">Card Type *</label>
             <select
-              value={values.card_type ?? ""}
+              value={(values.card_type as string) ?? ""}
               onChange={(e) => handleChange('card_type', e.target.value)}
               className="bg-gray-800 border border-gray-700 rounded px-3 py-2"
             >
@@ -316,7 +350,7 @@ export default function CardDetailsFormModal({
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-400">Card Name *</label>
             <select
-              value={values.card_name ?? ""}
+              value={(values.card_name as string) ?? ""}
               onChange={(e) => handleChange('card_name', e.target.value)}
               className="bg-gray-800 border border-gray-700 rounded px-3 py-2"
               disabled={availableCards.length === 0}
@@ -341,7 +375,7 @@ export default function CardDetailsFormModal({
             <label className="text-xs text-gray-400">Card Number</label>
             <input
               type="text"
-              value={values.card_number ?? ""}
+              value={(values.card_number as string) ?? ""}
               onChange={(e) => handleChange('card_number', e.target.value)}
               placeholder="XXXX XXXX XXXX XXXX"
               className="bg-gray-800 border border-gray-700 rounded px-3 py-2"
@@ -356,7 +390,7 @@ export default function CardDetailsFormModal({
             <label className="text-xs text-gray-400">Due Date</label>
             <input
               type="date"
-              value={values.due_date ?? ""}
+              value={(values.due_date as string) ?? ""}
               onChange={(e) => handleChange('due_date', e.target.value)}
               className="bg-gray-800 border border-gray-700 rounded px-3 py-2"
             />
@@ -374,6 +408,35 @@ export default function CardDetailsFormModal({
           </button>
         </div>
       </div>
+      
+      <PopupModal
+        open={popup.open}
+        onClose={() => setPopup({ ...popup, open: false })}
+        title={popup.title}
+      >
+        <div className="text-center">
+          <p className="mb-4">{popup.message}</p>
+          {popup.showCancel && (
+            <div className="flex justify-center gap-3">
+              <button
+                onClick={() => {
+                  setPopup({ ...popup, open: false });
+                  popup.onConfirm?.();
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-500"
+              >
+                {popup.confirmText || "Confirm"}
+              </button>
+              <button
+                onClick={() => setPopup({ ...popup, open: false })}
+                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500"
+              >
+                {popup.cancelText || "Cancel"}
+              </button>
+            </div>
+          )}
+        </div>
+      </PopupModal>
     </div>
   );
 }

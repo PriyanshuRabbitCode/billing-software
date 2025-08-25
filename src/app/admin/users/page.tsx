@@ -30,9 +30,9 @@ export default function UsersPage() {
         if (data?.users) {
           setUsers(data.users);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Error fetching users:', err);
-        setError(err.message || 'Failed to load users');
+        setError((err as Error).message || 'Failed to load users');
         
         // If admin API fails, try to at least get the current user
         try {
@@ -121,8 +121,8 @@ export default function UsersPage() {
         <ol className="list-decimal pl-5 space-y-2">
           <li>Go to <a href="https://app.supabase.com" className="text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">https://app.supabase.com</a> and log in</li>
           <li>Select your project</li>
-          <li>In the left sidebar, click on "Authentication"</li>
-          <li>Click on "Users" to view all registered users</li>
+          <li>In the left sidebar, click on &quot;Authentication&quot;</li>
+          <li>Click on &quot;Users&quot; to view all registered users</li>
         </ol>
       </div>
     </div>

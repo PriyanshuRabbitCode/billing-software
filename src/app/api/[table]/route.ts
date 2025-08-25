@@ -25,7 +25,7 @@ export async function GET(
     const customerId = searchParams.get('customer_id');
     
     let queryString = `SELECT * FROM ${table}`;
-    let queryParams: any[] = [];
+    const queryParams: unknown[] = [];
     
     // Special handling for customers table to include card due date
     if (table === 'customers') {
@@ -55,8 +55,8 @@ export async function GET(
     
     const { rows } = await query(queryString, queryParams);
     return NextResponse.json(rows ?? []);
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e: unknown) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 }
 
@@ -136,8 +136,8 @@ export async function POST(
   }
 
   // Special handling for transactions table
-  let finalColumns = columns;
-  let finalValues = values;
+  const finalColumns = columns;
+  const finalValues = values;
   
   if (table === 'transactions') {
     // Check if pending_amount and status are already provided in the request
@@ -200,9 +200,9 @@ export async function POST(
     console.log('Transaction saved:', rows[0]);
     
     return NextResponse.json(rows[0] ?? null, { status: 201 });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error('Database error:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 }
 

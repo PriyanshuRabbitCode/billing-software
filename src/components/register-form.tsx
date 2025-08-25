@@ -78,13 +78,13 @@ export function RegisterForm({
           <CardHeader>
             <CardTitle>Confirm Your Email</CardTitle>
             <CardDescription>
-              We've sent a confirmation email to your inbox
+              We&apos;ve sent a confirmation email to your inbox
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="p-6 bg-blue-50 border border-blue-200 rounded-lg">
               <p className="text-blue-800 mb-3">
-                We've sent a confirmation email to your inbox.
+                We&apos;ve sent a confirmation email to your inbox.
               </p>
               <p className="text-blue-700">
                 Please check your email and click the confirmation link to complete your registration.

@@ -4,7 +4,7 @@ import { createServerClient } from '@supabase/ssr';
 
 export async function middleware(request: NextRequest) {
   // Create a response object to modify
-  let response = NextResponse.next();
+  const response = NextResponse.next();
   
   // Create a Supabase client configured to use cookies
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
