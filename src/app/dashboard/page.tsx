@@ -2,24 +2,25 @@
 
 import { CreditCard, DollarSign, Users, CreditCard as CardIcon, Calendar, CalendarDays } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { useStats } from '@/lib/hooks/useCachedAPI';
-import { invalidateCardPendingCache } from '@/lib/cache';
-// Fetch stats from our server API backed by PostgreSQL
+import { useDashboard } from '@/lib/hooks/useDashboard';
 
 export default function DashboardPage() {
-  const [recent, setRecent] = useState<any[]>([]);
-  const [upcomingDueDates, setUpcomingDueDates] = useState<any[]>([]);
   const [timePeriod, setTimePeriod] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('monthly');
   const [customDateRange, setCustomDateRange] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  // Use cached stats API
-  const { data: statsData, loading: statsLoading } = useStats(
-    timePeriod, 
-    customDateRange ? startDate : undefined, 
-    customDateRange ? endDate : undefined
-  );
+  // Use the new consolidated dashboard hook
+  const { 
+    data: dashboardData, 
+    loading: dashboardLoading, 
+    error: dashboardError,
+    refetch: refetchDashboard 
+  } = useDashboard({
+    period: timePeriod,
+    startDate: customDateRange ? startDate : undefined,
+    endDate: customDateRange ? endDate : undefined
+  });
   
   // Set default dates when component mounts
   useEffect(() => {
@@ -46,38 +47,7 @@ export default function DashboardPage() {
     setStartDate(defaultStartDate.toISOString().split('T')[0]);
     setEndDate(now.toISOString().split('T')[0]);
   }, [timePeriod]);
-  
-  // Load recent activity and upcoming due dates on mount
-  useEffect(() => {
-    let active = true;
-    async function load() {
-      // First calculate card pending amounts to ensure data is up to date
-      try {
-        const cardPendingRes = await fetch('/api/calculate-card-pending-amount');
-        if (cardPendingRes.ok) {
-          console.log('Card pending amounts calculated for dashboard');
-        }
-      } catch (error) {
-        console.error('Error calculating card pending amounts:', error);
-      }
-      
-      const dueDatesRes = await fetch('/api/upcoming-due-dates');
-      const dueDatesData = await dueDatesRes.json();
-      
-      if (!active) return;
-      setUpcomingDueDates(dueDatesData);
-    }
-    load();
-    return () => { active = false; };
-  }, [timePeriod, customDateRange, startDate, endDate]);
 
-  // Update recent data when stats data changes
-  useEffect(() => {
-    if (statsData && typeof statsData === 'object' && statsData !== null && 'recent' in statsData && Array.isArray((statsData as any).recent)) {
-      setRecent((statsData as any).recent);
-    }
-  }, [statsData]);
-  
   const timePeriodOptions = [
     { value: 'daily', label: 'Daily' },
     { value: 'weekly', label: 'Weekly' },
@@ -93,6 +63,30 @@ export default function DashboardPage() {
     }
     return timePeriod;
   };
+
+  // Show error state if there's an error
+  if (dashboardError) {
+    return (
+      <div className="space-y-8">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-white">Dashboard</h1>
+            <p className="text-gray-400 mt-1">Welcome back! Here&apos;s what&apos;s happening with your business.</p>
+          </div>
+        </div>
+        <div className="bg-red-900/20 border border-red-500/50 rounded-xl p-6">
+          <h2 className="text-xl font-semibold text-red-400 mb-2">Error Loading Dashboard</h2>
+          <p className="text-red-300 mb-4">{dashboardError}</p>
+          <button 
+            onClick={refetchDashboard}
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -155,31 +149,31 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-5">
         <DashboardCard 
           title="Total Customers" 
-          value={statsLoading ? "Loading..." : String((statsData as any)?.stats?.customers || 0)} 
+          value={dashboardLoading ? "Loading..." : String(dashboardData?.stats?.customers || 0)} 
           description={`Active customers (${getPeriodLabel()})`} 
           icon={<Users className="w-6 h-6 text-blue-500" />} 
         />
         <DashboardCard 
           title="Total Cards" 
-          value={statsLoading ? "Loading..." : String((statsData as any)?.stats?.cards || 0)} 
+          value={dashboardLoading ? "Loading..." : String(dashboardData?.stats?.cards || 0)} 
           description={`All cards in system`} 
           icon={<CardIcon className="w-6 h-6 text-purple-500" />} 
         />
         <DashboardCard 
           title="Total Transactions" 
-          value={statsLoading ? "Loading..." : String((statsData as any)?.stats?.transactions || 0)} 
+          value={dashboardLoading ? "Loading..." : String(dashboardData?.stats?.transactions || 0)} 
           description={`All transactions (${getPeriodLabel()})`} 
           icon={<CreditCard className="w-6 h-6 text-orange-500" />} 
         />
         <DashboardCard 
           title="Pending Payments" 
-          value={statsLoading ? "Loading..." : `₹${((statsData as any)?.stats?.pending || 0).toFixed(2)}`} 
+          value={dashboardLoading ? "Loading..." : `₹${(dashboardData?.stats?.pending || 0).toFixed(2)}`} 
           description={`Awaiting payment (${getPeriodLabel()})`} 
           icon={<DollarSign className="w-6 h-6 text-yellow-500" />} 
         />
         <DashboardCard 
           title="Total Revenue" 
-          value={statsLoading ? "Loading..." : `₹${((statsData as any)?.stats?.revenue || 0).toFixed(2)}`} 
+          value={dashboardLoading ? "Loading..." : `₹${(dashboardData?.stats?.revenue || 0).toFixed(2)}`} 
           description={`Total profit (${getPeriodLabel()})`} 
           icon={<DollarSign className="w-6 h-6 text-green-500" />} 
         />
@@ -193,13 +187,13 @@ export default function DashboardPage() {
             <p className="text-gray-400 text-sm mt-1">Latest transactions and activities</p>
           </div>
           <div className="p-6">
-            {recent.length === 0 ? (
+            {!dashboardData?.recent || dashboardData.recent.length === 0 ? (
               <div className="text-center py-8">
                 <p className="text-gray-400">No recent transactions found.</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {recent.map((tx) => (
+                {dashboardData.recent.map((tx) => (
                   <div key={tx.id} className="flex items-center justify-between p-3 rounded-lg bg-gray-750 hover:bg-gray-700 transition-colors">
                     <div className="flex items-center space-x-3">
                       <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
@@ -229,13 +223,13 @@ export default function DashboardPage() {
             <p className="text-gray-400 text-sm mt-1">Cards with upcoming payment due dates</p>
           </div>
           <div className="p-6">
-            {upcomingDueDates.length === 0 ? (
+            {!dashboardData?.upcomingDueDates || dashboardData.upcomingDueDates.length === 0 ? (
               <div className="text-center py-8">
                 <p className="text-gray-400">No upcoming due dates found.</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {upcomingDueDates.map((card) => (
+                {dashboardData.upcomingDueDates.map((card) => (
                   <div key={card.card_number} className="flex items-center justify-between p-3 rounded-lg bg-gray-750 hover:bg-gray-700 transition-colors">
                     <div className="flex items-center space-x-3">
                       <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
@@ -254,6 +248,13 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Cache Status Indicator (for debugging) */}
+      {dashboardData?.cached && (
+        <div className="text-xs text-gray-500 text-center">
+          Data loaded from cache • Last updated: {new Date(dashboardData.timestamp).toLocaleTimeString()}
+        </div>
+      )}
     </div>
   );
 }

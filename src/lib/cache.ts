@@ -74,6 +74,8 @@ export const CACHE_KEYS = {
   CARD_PENDING_FOR_CARD: (cardNumber: string) => `card-pending-${cardNumber}`,
   STATS: (period: string, startDate?: string, endDate?: string) => 
     `stats-${period}-${startDate || ''}-${endDate || ''}`,
+  DASHBOARD: (period: string, startDate?: string, endDate?: string) => 
+    `dashboard-${period}-${startDate || ''}-${endDate || ''}`,
 } as const;
 
 // Helper function to create cache key with parameters
@@ -91,4 +93,22 @@ export function invalidateCardPendingCache(): void {
     }
   }
   keysToDelete.forEach(key => apiCache.delete(key));
+}
+
+// Helper function to invalidate dashboard cache
+export function invalidateDashboardCache(): void {
+  // Clear all dashboard related cache
+  const keysToDelete: string[] = [];
+  for (const [key] of apiCache['cache']) {
+    if (key.startsWith('dashboard-')) {
+      keysToDelete.push(key);
+    }
+  }
+  keysToDelete.forEach(key => apiCache.delete(key));
+}
+
+// Helper function to invalidate all cache when transactions are modified
+export function invalidateTransactionCache(): void {
+  invalidateCardPendingCache();
+  invalidateDashboardCache();
 }

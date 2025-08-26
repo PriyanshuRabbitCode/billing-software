@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import DataTable from "@/components/admin/DataTable";
 import TransactionFormModal from "@/components/admin/TransactionFormModal";
 import { schemas } from "@/lib/tableSchemas";
-import { useCachedAPI } from "@/lib/hooks/useCachedAPI";
 import { apiCache } from "@/lib/cache";
+import { invalidateTransactionCache } from "@/lib/cache";
 
 const schema = schemas.transactions;
 
@@ -181,7 +181,8 @@ export default function TransactionsPage() {
       // Successfully saved
       console.log('Transaction saved successfully');
       
-
+      // Invalidate cache to ensure dashboard data is fresh
+      invalidateTransactionCache();
       
       await load();
       setOpen(false);
@@ -200,6 +201,8 @@ export default function TransactionsPage() {
   const onDelete = async (row: any) => {
     if (!confirm("Delete this record?")) return;
     await fetch(`/api/${schema.table}/${row.id}`, { method: 'DELETE' });
+    // Invalidate cache to ensure dashboard data is fresh
+    invalidateTransactionCache();
     await load();
   };
 
