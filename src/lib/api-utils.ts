@@ -42,19 +42,7 @@ export function validateRouteId(id: string): number | null {
   return parseNumericId(id)
 }
 
-// Common API middleware wrapper
-export function withErrorHandling<T extends unknown[]>(
-  handler: (...args: T) => Promise<NextResponse>,
-  context: string = 'API'
-) {
-  return async (...args: T): Promise<NextResponse> => {
-    try {
-      return await handler(...args)
-    } catch (error) {
-      return handleApiError(error, context)
-    }
-  }
-}
+
 
 // Type-safe database result validator
 export function validateDbResult<T>(result: unknown): result is { rows: T[] } {
