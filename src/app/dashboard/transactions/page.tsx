@@ -62,18 +62,10 @@ export default function TransactionsPage() {
     });
   };
 
-  const load = useCallback(async () => {
-    try {
-      // Fetch transactions using the unified API
-      await fetchTransactions();
-    } catch (err) {
-      console.error('Error loading transactions:', err);
-    }
-  }, [fetchTransactions]);
-
+  // Fetch transactions on mount
   useEffect(() => { 
-    load(); 
-  }, [load]);
+    fetchTransactions();
+  }, [fetchTransactions]);
 
   // Calculate totals whenever transactions change
   useEffect(() => {
@@ -152,7 +144,7 @@ export default function TransactionsPage() {
       // Invalidate cache to ensure dashboard data is fresh
       invalidateCache();
       
-      await load();
+      await fetchTransactions({ forceRefresh: true });
       setOpen(false);
       return await response.json();
     } catch (err) {
@@ -171,7 +163,7 @@ export default function TransactionsPage() {
     await fetch(`/api/${schema.table}/${row.id}`, { method: 'DELETE' });
     // Invalidate cache to ensure dashboard data is fresh
     invalidateCache();
-    await load();
+    await fetchTransactions({ forceRefresh: true });
   };
 
   // Format currency

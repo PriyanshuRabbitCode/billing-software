@@ -37,6 +37,11 @@ export default function CustomersPage() {
     invalidateCache 
   } = useData();
 
+  // Fetch customers on mount
+  useEffect(() => {
+    fetchCustomers();
+  }, [fetchCustomers]);
+
   const handleSave = async (values: Record<string, any>) => {
     try {
       console.log('Saving values:', values);

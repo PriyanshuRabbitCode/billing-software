@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import DataTable from "@/components/admin/DataTable";
 import CardDetailsFormModal from "@/components/admin/CardDetailsFormModal";
 import { schemas } from "@/lib/tableSchemas";
@@ -17,6 +17,11 @@ export default function CardDetailsPage() {
     fetchCardDetails, 
     invalidateCache 
   } = useData();
+
+  // Fetch card details on mount
+  useEffect(() => {
+    fetchCardDetails();
+  }, [fetchCardDetails]);
 
   // Transform card details to include customer names
   const rows = cardDetails.map((card: any) => ({
