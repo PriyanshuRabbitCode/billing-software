@@ -3,11 +3,31 @@
 import { CreditCard, DollarSign, Users, CreditCard as CardIcon, Calendar, CalendarDays } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useStats } from '@/lib/hooks/useCachedAPI';
+import { isRecord } from '@/lib/utils';
+
+interface RecentActivity {
+  id: string;
+  customer_id: string;
+  customer_name: string;
+  payable_amount: number;
+  pending_amount: number;
+  transaction_date: string;
+  status: string;
+}
+
+interface DueDate {
+  id: string;
+  customer_name: string;
+  card_number: string;
+  card_name: string;
+  due_date: string;
+  pending_amount: number;
+}
 // Fetch stats from our server API backed by PostgreSQL
 
 export default function DashboardPage() {
-  const [recent, setRecent] = useState<any[]>([]);
-  const [upcomingDueDates, setUpcomingDueDates] = useState<any[]>([]);
+  const [recent, setRecent] = useState<RecentActivity[]>([]);
+  const [upcomingDueDates, setUpcomingDueDates] = useState<DueDate[]>([]);
   const [timePeriod, setTimePeriod] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('monthly');
   const [customDateRange, setCustomDateRange] = useState(false);
   const [startDate, setStartDate] = useState('');
@@ -72,8 +92,8 @@ export default function DashboardPage() {
 
   // Update recent data when stats data changes
   useEffect(() => {
-    if (statsData && typeof statsData === 'object' && statsData !== null && 'recent' in statsData && Array.isArray((statsData as any).recent)) {
-      setRecent((statsData as any).recent);
+    if (statsData && isRecord(statsData) && 'recent' in statsData && Array.isArray(statsData.recent)) {
+      setRecent(statsData.recent);
     }
   }, [statsData]);
   

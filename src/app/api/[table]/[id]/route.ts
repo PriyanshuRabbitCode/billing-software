@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/postgres";
 import { schemas } from "@/lib/tableSchemas";
+import { createSuccessResponse, createErrorResponse, parseRequestBody, validateRouteId } from "@/lib/api-utils";
+import { getErrorMessage } from "@/lib/utils";
 
 export const runtime = 'nodejs';
 
@@ -21,22 +23,7 @@ function getTableSchema(table: string) {
   return entry ?? null;
 }
 
-// Helper function for error responses
-function createErrorResponse(message: string, status: number = 500) {
-  return NextResponse.json(
-    { 
-      error: message,
-      timestamp: new Date().toISOString(),
-      status 
-    }, 
-    { status }
-  );
-}
 
-// Helper function for success responses
-function createSuccessResponse(data: any, status: number = 200) {
-  return NextResponse.json(data, { status });
-}
 
 export async function GET(
   _req: NextRequest,
@@ -52,8 +39,8 @@ export async function GET(
     }
 
     // Validate and parse ID
-    const numericId = Number(id);
-    if (!Number.isFinite(numericId)) {
+    const numericId = validateRouteId(id);
+    if (!numericId) {
       return createErrorResponse("Invalid id", 400);
     }
 
@@ -65,9 +52,9 @@ export async function GET(
     }
 
     return createSuccessResponse(rows[0]);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('GET error:', error);
-    return createErrorResponse(error.message || 'Internal server error');
+    return createErrorResponse(getErrorMessage(error));
   }
 }
 
@@ -85,8 +72,8 @@ export async function PATCH(
     }
 
     // Validate and parse ID
-    const numericId = Number(id);
-    if (!Number.isFinite(numericId)) {
+    const numericId = validateRouteId(id);
+    if (!numericId) {
       return createErrorResponse("Invalid id", 400);
     }
 
@@ -99,10 +86,8 @@ export async function PATCH(
     const allowedFields = new Set(schema.fields.map((f) => f.name));
 
     // Parse request body
-    let body: any;
-    try {
-      body = await req.json();
-    } catch {
+    const body = await parseRequestBody(req);
+    if (!body) {
       return createErrorResponse("Invalid JSON in request body", 400);
     }
 
@@ -189,7 +174,7 @@ export async function PATCH(
     return createSuccessResponse(rows[0]);
   } catch (error: unknown) {
     console.error('PATCH error:', error);
-    return createErrorResponse(error instanceof Error ? error.message : 'Internal server error');
+    return createErrorResponse(getErrorMessage(error));
   }
 }
 
@@ -207,8 +192,8 @@ export async function DELETE(
     }
 
     // Validate and parse ID
-    const numericId = Number(id);
-    if (!Number.isFinite(numericId)) {
+    const numericId = validateRouteId(id);
+    if (!numericId) {
       return createErrorResponse("Invalid id", 400);
     }
 
@@ -222,9 +207,9 @@ export async function DELETE(
     await query(`DELETE FROM ${table} WHERE id = $1`, [numericId]);
 
     return createSuccessResponse({ ok: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('DELETE error:', error);
-    return createErrorResponse(error.message || 'Internal server error');
+    return createErrorResponse(getErrorMessage(error));
   }
 }
 

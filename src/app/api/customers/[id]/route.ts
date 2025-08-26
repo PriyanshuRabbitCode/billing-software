@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, getPool } from '@/lib/postgres';
 import { schemas } from '@/lib/tableSchemas';
+import { createSuccessResponse, createErrorResponse, parseRequestBody, validateRouteId } from '@/lib/api-utils';
+import { getErrorMessage } from '@/lib/utils';
 
 // TypeScript interfaces for better type safety
 interface RouteParams {
@@ -68,8 +70,8 @@ export async function PATCH(
     const { id } = params;
 
     // Validate and parse ID
-    const numericId = Number(id);
-    if (!Number.isFinite(numericId)) {
+    const numericId = validateRouteId(id);
+    if (!numericId) {
       return createErrorResponse("Invalid id", 400);
     }
 
@@ -78,10 +80,8 @@ export async function PATCH(
     const allowedFields = new Set(schema.fields.map((f) => f.name));
 
     // Parse request body
-    let body: any;
-    try {
-      body = await req.json();
-    } catch {
+    const body = await parseRequestBody(req);
+    if (!body) {
       return createErrorResponse("Invalid JSON in request body", 400);
     }
 
@@ -126,7 +126,7 @@ export async function PATCH(
     return createSuccessResponse(rows[0]);
   } catch (error: unknown) {
     console.error('PATCH customer error:', error);
-    return createErrorResponse(error instanceof Error ? error.message : 'Internal server error');
+    return createErrorResponse(getErrorMessage(error));
   }
 }
 
@@ -139,8 +139,8 @@ export async function DELETE(
     const { id } = params;
 
     // Validate and parse ID
-    const numericId = Number(id);
-    if (!Number.isFinite(numericId)) {
+    const numericId = validateRouteId(id);
+    if (!numericId) {
       return createErrorResponse("Invalid id", 400);
     }
 
@@ -161,6 +161,6 @@ export async function DELETE(
     return createSuccessResponse({ ok: true });
   } catch (error: unknown) {
     console.error('DELETE customer error:', error);
-    return createErrorResponse(error instanceof Error ? error.message : 'Internal server error');
+    return createErrorResponse(getErrorMessage(error));
   }
 }
