@@ -27,6 +27,7 @@ export default function CustomerViewModal({
   const [selectedCard, setSelectedCard] = useState<any | null>(null);
 
   useEffect(() => {
+    console.log('CustomerViewModal useEffect - open:', open, 'customer:', customer);
     if (open && customer) {
       loadCustomerData();
     }
@@ -37,19 +38,30 @@ export default function CustomerViewModal({
     
     setLoading(true);
     try {
+      console.log('Loading customer data for ID:', customer.id);
+      
       // Use the new consolidated API with relations
       const customerRes = await fetch(`/api/customers?include=relations&id=${customer.id}`);
       
+      console.log('Customer API response status:', customerRes.status);
+      
       if (!customerRes.ok) {
-        throw new Error('Failed to fetch customer data');
+        const errorText = await customerRes.text();
+        console.error('Customer API error response:', errorText);
+        throw new Error(`Failed to fetch customer data: ${customerRes.status}`);
       }
       
       const result = await customerRes.json();
+      console.log('Customer API result:', result);
+      
       const customerWithRelations = result.data[0];
       
       if (!customerWithRelations) {
+        console.error('No customer data found in response');
         throw new Error('Customer not found');
       }
+
+      console.log('Customer with relations:', customerWithRelations);
 
       setCustomerData(customerWithRelations);
       setTaxDetails(customerWithRelations.tax_details || []);
@@ -60,6 +72,14 @@ export default function CustomerViewModal({
       setCardPendingAmounts(customerWithRelations.card_pending_amounts || []);
     } catch (error) {
       console.error('Error loading customer data:', error);
+      // Fallback: use the original customer data
+      setCustomerData(customer);
+      setTaxDetails([]);
+      setIdentityDocuments([]);
+      setAccounts([]);
+      setCards([]);
+      setTransactions([]);
+      setCardPendingAmounts([]);
     } finally {
       setLoading(false);
     }

@@ -98,7 +98,10 @@ export async function GET(request: NextRequest) {
     queryParams.push(Number(limit), Number(offset));
 
     // Execute base customer query
+    console.log('Customer query:', baseQuery);
+    console.log('Query params:', queryParams);
     const { rows: customers } = await query(baseQuery, queryParams);
+    console.log('Customer query result:', customers);
 
     // If include=relations is requested, fetch related data in parallel
     if (include === 'relations' && customers.length > 0) {
@@ -129,7 +132,7 @@ export async function GET(request: NextRequest) {
         
         // Customer accounts
         query(`
-          SELECT * FROM customer_accounts 
+          SELECT * FROM accounts 
           WHERE customer_id = ANY($1)
           ORDER BY id DESC
         `, [customerIds]),
