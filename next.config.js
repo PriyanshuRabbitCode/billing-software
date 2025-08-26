@@ -32,9 +32,11 @@ const nextConfig = {
   webpack: (config, { dev, isServer }) => {
     // Only apply optimizations for client-side builds
     if (!isServer) {
-      // Optimize chunk splitting
+      // Optimize chunk splitting with better cache handling
       config.optimization.splitChunks = {
         chunks: 'all',
+        maxInitialRequests: 25,
+        minSize: 20000,
         cacheGroups: {
           default: false,
           vendors: false,
@@ -42,8 +44,9 @@ const nextConfig = {
           vendor: {
             name: 'vendor',
             chunks: 'all',
-            test: /node_modules/,
+            test: /[\\/]node_modules[\\/]/,
             priority: 20,
+            reuseExistingChunk: true,
           },
           // Create a common chunk for shared code
           common: {
@@ -52,9 +55,29 @@ const nextConfig = {
             chunks: 'all',
             priority: 10,
             reuseExistingChunk: true,
-            enforce: true,
+            enforce: false, // Remove enforce to prevent conflicts
           },
         },
+      };
+
+      // Optimize cache serialization to reduce large string warnings
+      config.cache = {
+        type: 'filesystem',
+        buildDependencies: {
+          config: [__filename],
+        },
+        cacheDirectory: require('path').resolve(__dirname, '.next/cache'),
+        compression: 'gzip',
+        maxAge: 172800000, // 2 days
+        store: 'pack',
+        allowCollectingMemory: true,
+      };
+
+      // Add performance hints to identify large chunks
+      config.performance = {
+        hints: 'warning',
+        maxEntrypointSize: 512000,
+        maxAssetSize: 512000,
       };
     }
 
