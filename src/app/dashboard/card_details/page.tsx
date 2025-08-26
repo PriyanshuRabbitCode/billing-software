@@ -1,72 +1,32 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import DataTable from "@/components/admin/DataTable";
 import CardDetailsFormModal from "@/components/admin/CardDetailsFormModal";
 import { schemas } from "@/lib/tableSchemas";
-import { useDashboard } from "@/lib/hooks/useDashboard";
+import { useCardDetails } from "@/lib/hooks/useCardDetails";
 
 const schema = schemas.card_details;
 
 export default function CardDetailsPage() {
-  const [rows, setRows] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
 
-  // Use dashboard data to get card details with customer info
-  const { data: dashboardData, loading: dashboardLoading, error: dashboardError } = useDashboard();
+  // Use optimized card details hook that fetches everything in one API call
+  const { 
+    cardDetails, 
+    customers, 
+    loading, 
+    error, 
+    cached, 
+    timestamp, 
+    refetch 
+  } = useCardDetails();
 
-  const load = useCallback(async () => {
-    try {
-      // If we have dashboard data, use the card details from there
-      if (dashboardData?.cardDetails) {
-        setRows(dashboardData.cardDetails);
-        return;
-      }
-
-      // Fallback: fetch card details directly if dashboard data not available
-      const res = await fetch(`/api/${schema.table}`);
-      const data = await res.json();
-      
-             // If we have customer data from dashboard, use it to enrich card details
-       if (dashboardData?.customers) {
-         const customerMap = new Map(
-           dashboardData.customers.map((customer: any) => [customer.id, customer])
-         );
-         
-         const transformedData = data.map((row: any) => ({
-           ...row,
-           customer_name: (customerMap.get(row.customer_id) as any)?.full_name || 'Unknown'
-         }));
-        
-        setRows(transformedData);
-      } else {
-        // Fallback: fetch customer data individually (less efficient)
-        const transformedData = await Promise.all((data ?? []).map(async (row: any) => {
-          try {
-            const customerRes = await fetch(`/api/customers?id=${row.customer_id}`);
-            const result = await customerRes.json();
-            const customer = result.data[0];
-            return {
-              ...row,
-              customer_name: customer?.full_name || 'Unknown'
-            };
-          } catch (err) {
-            console.error('Error fetching customer:', err);
-            return row;
-          }
-        }));
-        
-        setRows(transformedData);
-      }
-    } catch (err) {
-      console.error('Error loading data:', err);
-      setRows([]);
-    }
-  }, [dashboardData]);
-
-  useEffect(() => { 
-    load(); 
-  }, [load]);
+  // Transform card details to include customer names
+  const rows = cardDetails.map((card: any) => ({
+    ...card,
+    customer_name: card.customer_name || 'Unknown'
+  }));
 
   const onSubmit = async (values: Record<string, any>) => {
     try {
@@ -129,7 +89,7 @@ export default function CardDetailsPage() {
         }
       }
       
-      await load();
+      await refetch();
       setOpen(false);
     } catch (error) {
       console.error('Submit error:', error);
@@ -152,7 +112,7 @@ export default function CardDetailsPage() {
         throw new Error(errorData.error || 'Delete failed');
       }
       
-      await load();
+      await refetch();
     } catch (error) {
       console.error('Delete error:', error);
       if (error instanceof Error) {
@@ -164,7 +124,7 @@ export default function CardDetailsPage() {
   };
 
   // Show error state if there's an error
-  if (dashboardError) {
+  if (error) {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -172,7 +132,7 @@ export default function CardDetailsPage() {
         </div>
         <div className="bg-red-900/20 border border-red-500/50 rounded-xl p-6">
           <h2 className="text-xl font-semibold text-red-400 mb-2">Error Loading Card Details</h2>
-          <p className="text-red-300 mb-4">{dashboardError}</p>
+          <p className="text-red-300 mb-4">{error}</p>
         </div>
       </div>
     );
@@ -192,8 +152,15 @@ export default function CardDetailsPage() {
         </div>
       </div>
 
+      {/* Cache Status Indicator */}
+      {cached && (
+        <div className="text-xs text-gray-500">
+          Data loaded from cache • Last updated: {new Date(timestamp).toLocaleTimeString()}
+        </div>
+      )}
+
       {/* Loading State */}
-      {dashboardLoading && (
+      {loading && (
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
           <span className="ml-2 text-gray-400">Loading card details...</span>
@@ -201,7 +168,7 @@ export default function CardDetailsPage() {
       )}
 
       {/* Data Table */}
-      {!dashboardLoading && (
+      {!loading && (
         <DataTable 
           data={rows} 
           columns={schema.listColumns as any} 

@@ -32,9 +32,11 @@ export async function GET(request: NextRequest) {
     const customStartDate = searchParams.get('startDate');
     const customEndDate = searchParams.get('endDate');
     const forceRefresh = searchParams.get('refresh') === 'true';
+    const includeCardDetails = searchParams.get('include') === 'card_details' || searchParams.get('include') === 'all';
+    const includeCustomers = searchParams.get('include') === 'customers' || searchParams.get('include') === 'all';
     
     // Create cache key
-    const cacheKey = `dashboard-${period}-${customStartDate || ''}-${customEndDate || ''}`;
+    const cacheKey = `dashboard-${period}-${customStartDate || ''}-${customEndDate || ''}-${includeCardDetails ? 'cards' : ''}-${includeCustomers ? 'customers' : ''}`;
     
     // Check cache first (unless force refresh)
     if (!forceRefresh) {
@@ -80,16 +82,9 @@ export async function GET(request: NextRequest) {
     const startDateStr = startDate.toISOString();
     const endDateStr = endDate.toISOString();
 
-    // Execute all database queries in parallel for optimal performance
-    const [
-      statsResult,
-      recentResult,
-      cardPendingResult,
-      upcomingDueDatesResult,
-      cardDetailsResult,
-      customersResult
-    ] = await Promise.all([
-      // Stats queries (customers, cards, transactions, pending, revenue)
+    // Build queries array based on what's needed
+    const queries: Promise<any>[] = [
+      // Stats queries (always needed)
       Promise.all([
         query<{ count: string }>(
           `SELECT COUNT(DISTINCT c.id)::int as count 
@@ -124,7 +119,7 @@ export async function GET(request: NextRequest) {
         )
       ]),
       
-      // Recent transactions
+      // Recent transactions (always needed)
       query(
         `SELECT t.id, t.payable_amount, t.status, t.transaction_date, c.full_name AS customer_name, 
                 t.pending_amount
@@ -136,7 +131,7 @@ export async function GET(request: NextRequest) {
         [startDateStr, endDateStr]
       ),
       
-      // Card pending amounts calculation
+      // Card pending amounts calculation (always needed)
       query(`
         WITH transaction_totals AS (
           SELECT 
@@ -171,7 +166,7 @@ export async function GET(request: NextRequest) {
         RETURNING customer_id, card_number, card_name, pending_amount, received_amount
       `),
       
-      // Upcoming due dates
+      // Upcoming due dates (always needed)
       query(
         `SELECT 
           cd.due_date,
@@ -183,43 +178,78 @@ export async function GET(request: NextRequest) {
         WHERE cd.due_date >= CURRENT_DATE
         ORDER BY cd.due_date ASC
         LIMIT 5`
-      ),
-      
-      // Card details with customer info
-      query(
-        `SELECT 
-          cd.*,
-          c.full_name as customer_name,
-          c.email_id as customer_email,
-          c.contact_no as customer_contact
-        FROM card_details cd
-        LEFT JOIN customers c ON c.id = cd.customer_id
-        ORDER BY cd.id DESC
-        LIMIT 100`
-      ),
-      
-      // All customers for reuse
-      query(
-        `SELECT 
-          c.*, 
-          (SELECT MIN(cd.due_date) 
-           FROM card_details cd 
-           WHERE cd.customer_id = c.id) as card_due_date
-        FROM customers c
-        ORDER BY c.id DESC
-        LIMIT 1000`
       )
-    ]);
+    ];
 
-    // Extract stats results
+    // Add optional queries based on include parameters
+    if (includeCardDetails) {
+      queries.push(
+        // Card details with customer info
+        query(
+          `SELECT 
+            cd.*,
+            c.full_name as customer_name,
+            c.email_id as customer_email,
+            c.contact_no as customer_contact
+          FROM card_details cd
+          LEFT JOIN customers c ON c.id = cd.customer_id
+          ORDER BY cd.id DESC
+          LIMIT 1000`
+        )
+      );
+    }
+
+    if (includeCustomers) {
+      queries.push(
+        // All customers for reuse
+        query(
+          `SELECT 
+            c.*, 
+            (SELECT MIN(cd.due_date) 
+             FROM card_details cd 
+             WHERE cd.customer_id = c.id) as card_due_date
+          FROM customers c
+          ORDER BY c.id DESC
+          LIMIT 1000`
+        )
+      );
+    }
+
+        // Execute all queries in parallel
+    const results = await Promise.all(queries);
+
+    // Extract results based on what was requested
+    let resultIndex = 0;
+    
+    // Stats results (always present)
+    const statsResult = results[resultIndex++];
     const [c, a, t, pendingRows, revenueRows] = statsResult;
     
-    // Calculate card pending totals
-    const cardPendingTotals = cardPendingResult.rows.reduce((acc, row) => {
+    // Recent transactions (always present)
+    const recentResult = results[resultIndex++];
+    
+    // Card pending amounts (always present)
+    const cardPendingResult = results[resultIndex++];
+    const cardPendingTotals = cardPendingResult.rows.reduce((acc: { total_pending: number; total_received: number }, row: any) => {
       acc.total_pending += Number(row.pending_amount || 0);
       acc.total_received += Number(row.received_amount || 0);
       return acc;
     }, { total_pending: 0, total_received: 0 });
+    
+    // Upcoming due dates (always present)
+    const upcomingDueDatesResult = results[resultIndex++];
+    
+    // Optional results
+    let cardDetailsResult = { rows: [] };
+    let customersResult = { rows: [] };
+    
+    if (includeCardDetails) {
+      cardDetailsResult = results[resultIndex++];
+    }
+    
+    if (includeCustomers) {
+      customersResult = results[resultIndex++];
+    }
 
     // Build response object
     const response: DashboardResponse = {
