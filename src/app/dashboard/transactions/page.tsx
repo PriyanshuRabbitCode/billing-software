@@ -217,7 +217,7 @@ export default function TransactionsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">{schema.title}</h1>
         <div className="flex gap-2">
-          <button className="px-3 py-2 rounded bg-blue-600 text-white" onClick={() => { setEditing(null); setOpen(true); }}>Add New</button>
+          <button className="px-3 py-2 rounded bg-blue-600 text-white" onClick={() => { setEditing(null); setOpen(true); }}>New Transaction</button>
         </div>
       </div>
 

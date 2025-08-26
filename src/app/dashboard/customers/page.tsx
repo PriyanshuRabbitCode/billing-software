@@ -214,7 +214,7 @@ export default function CustomersPage() {
             setOpen(true);
           }}
         >
-          Add New
+                      New Customer
         </button>
       </div>
 
