@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from 'react';
 
 // Data types
 interface Customer {
@@ -238,7 +238,7 @@ export function DataProvider({ children }: DataProviderProps) {
   };
 
   // Fetch customers
-  const fetchCustomers = async (options: { include?: string; forceRefresh?: boolean } = {}) => {
+  const fetchCustomers = useCallback(async (options: { include?: string; forceRefresh?: boolean } = {}) => {
     const { include = 'basic', forceRefresh = false } = options;
     
     // Check cache first
@@ -267,10 +267,10 @@ export function DataProvider({ children }: DataProviderProps) {
     } finally {
       dispatch({ type: 'SET_LOADING', payload: { key: 'customers', value: false } });
     }
-  };
+  }, [state.customers.length, state.cache.customers]);
 
   // Fetch transactions
-  const fetchTransactions = async (options: { limit?: number; offset?: number; forceRefresh?: boolean } = {}) => {
+  const fetchTransactions = useCallback(async (options: { limit?: number; offset?: number; forceRefresh?: boolean } = {}) => {
     const { limit = 1000, offset = 0, forceRefresh = false } = options;
     
     // Check cache first
@@ -301,10 +301,10 @@ export function DataProvider({ children }: DataProviderProps) {
     } finally {
       dispatch({ type: 'SET_LOADING', payload: { key: 'transactions', value: false } });
     }
-  };
+  }, [state.transactions.length, state.cache.transactions]);
 
   // Fetch card details
-  const fetchCardDetails = async (options: { forceRefresh?: boolean } = {}) => {
+  const fetchCardDetails = useCallback(async (options: { forceRefresh?: boolean } = {}) => {
     const { forceRefresh = false } = options;
     
     // Check cache first
@@ -333,10 +333,10 @@ export function DataProvider({ children }: DataProviderProps) {
     } finally {
       dispatch({ type: 'SET_LOADING', payload: { key: 'cardDetails', value: false } });
     }
-  };
+  }, [state.cardDetails.length, state.cache.cardDetails]);
 
   // Fetch dashboard data
-  const fetchDashboard = async (options: { include?: string; period?: string; forceRefresh?: boolean } = {}) => {
+  const fetchDashboard = useCallback(async (options: { include?: string; period?: string; forceRefresh?: boolean } = {}) => {
     const { include = 'stats', period = 'monthly', forceRefresh = false } = options;
     
     // Check cache first
@@ -366,13 +366,13 @@ export function DataProvider({ children }: DataProviderProps) {
     } finally {
       dispatch({ type: 'SET_LOADING', payload: { key: 'dashboard', value: false } });
     }
-  };
+  }, [state.dashboard, state.cache.dashboard]);
 
   // Helper functions
-  const getCustomerById = (id: number) => state.customers.find(c => c.id === id);
-  const getTransactionById = (id: number) => state.transactions.find(t => t.id === id);
-  const getCardDetailById = (id: number) => state.cardDetails.find(c => c.id === id);
-  const invalidateCache = () => dispatch({ type: 'CLEAR_CACHE' });
+  const getCustomerById = useCallback((id: number) => state.customers.find(c => c.id === id), [state.customers]);
+  const getTransactionById = useCallback((id: number) => state.transactions.find(t => t.id === id), [state.transactions]);
+  const getCardDetailById = useCallback((id: number) => state.cardDetails.find(c => c.id === id), [state.cardDetails]);
+  const invalidateCache = useCallback(() => dispatch({ type: 'CLEAR_CACHE' }), []);
 
   // Initial data fetch
   useEffect(() => {
