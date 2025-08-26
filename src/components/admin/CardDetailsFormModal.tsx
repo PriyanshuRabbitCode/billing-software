@@ -130,9 +130,10 @@ export default function CardDetailsFormModal({
     let active = true;
     async function loadCustomerOptions() {
       try {
-        const res = await fetch(`/api/rel/customers`);
-        const list = (await res.json()) as Array<Record<string, string | number | boolean | null>>;
-        const customerOptions = list.map((r) => ({ value: r.id, label: r.full_name as string }));
+        const res = await fetch(`/api/customers`);
+        const result = await res.json();
+        const list = result.data || result;
+        const customerOptions = list.map((r: any) => ({ value: r.id, label: r.full_name as string }));
         if (active) {
           setOptions(prev => ({ ...prev, customer_id: customerOptions }));
         }

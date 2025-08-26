@@ -37,50 +37,27 @@ export default function CustomerViewModal({
     
     setLoading(true);
     try {
-      // Load all related data in parallel
-      const [
-        customerRes,
-        taxRes,
-        identityRes,
-        accountsRes,
-        cardsRes,
-        transactionsRes,
-        cardPendingRes
-      ] = await Promise.all([
-        fetch(`/api/customers/${customer.id}`),
-        fetch(`/api/customer_tax_details?customer_id=${customer.id}`),
-        fetch(`/api/identity_documents?customer_id=${customer.id}`),
-        fetch(`/api/accounts?customer_id=${customer.id}`),
-        fetch(`/api/customer-cards/${customer.id}`),
-        fetch(`/api/transactions?customer_id=${customer.id}`),
-        fetch(`/api/card-pending-amounts?customer_id=${customer.id}`)
-      ]);
+      // Use the new consolidated API with relations
+      const customerRes = await fetch(`/api/customers?include=relations&id=${customer.id}`);
+      
+      if (!customerRes.ok) {
+        throw new Error('Failed to fetch customer data');
+      }
+      
+      const result = await customerRes.json();
+      const customerWithRelations = result.data[0];
+      
+      if (!customerWithRelations) {
+        throw new Error('Customer not found');
+      }
 
-      const [
-        customerData,
-        taxData,
-        identityData,
-        accountsData,
-        cardsData,
-        transactionsData,
-        cardPendingData
-      ] = await Promise.all([
-        customerRes.json(),
-        taxRes.json(),
-        identityRes.json(),
-        accountsRes.json(),
-        cardsRes.json(),
-        transactionsRes.json(),
-        cardPendingRes.json()
-      ]);
-
-      setCustomerData(customerData);
-      setTaxDetails(Array.isArray(taxData) ? taxData : []);
-      setIdentityDocuments(Array.isArray(identityData) ? identityData : []);
-      setAccounts(Array.isArray(accountsData) ? accountsData : []);
-      setCards(Array.isArray(cardsData) ? cardsData : []);
-      setTransactions(Array.isArray(transactionsData) ? transactionsData : []);
-      setCardPendingAmounts(Array.isArray(cardPendingData) ? cardPendingData : []);
+      setCustomerData(customerWithRelations);
+      setTaxDetails(customerWithRelations.tax_details || []);
+      setIdentityDocuments(customerWithRelations.identity_documents || []);
+      setAccounts(customerWithRelations.accounts || []);
+      setCards(customerWithRelations.cards || []);
+      setTransactions(customerWithRelations.transactions || []);
+      setCardPendingAmounts(customerWithRelations.card_pending_amounts || []);
     } catch (error) {
       console.error('Error loading customer data:', error);
     } finally {

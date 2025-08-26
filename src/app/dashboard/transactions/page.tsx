@@ -81,8 +81,9 @@ export default function TransactionsPage() {
           let customer: any = apiCache.get(customerCacheKey);
           
           if (!customer) {
-            const customerRes = await fetch(`/api/customers/${row.customer_id}`);
-            customer = await customerRes.json();
+            const customerRes = await fetch(`/api/customers?id=${row.customer_id}`);
+            const result = await customerRes.json();
+            customer = result.data[0];
             apiCache.set(customerCacheKey, customer, 10 * 60 * 1000); // 10 minutes
           }
           

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { useCustomers } from "@/lib/hooks/useCustomers";
 
 interface Customer {
   id: number;
@@ -25,12 +26,13 @@ export default function SearchableCustomerInput({
   initialCustomerName
 }: SearchableCustomerInputProps) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
+
+  // Use the new customers hook
+  const { customers, loading, error: fetchError } = useCustomers();
 
   // Initialize search term with initial customer name if provided
   useEffect(() => {
@@ -38,25 +40,6 @@ export default function SearchableCustomerInput({
       setSearchTerm(initialCustomerName);
     }
   }, [initialCustomerName, searchTerm]);
-
-  // Load all customers on component mount
-  useEffect(() => {
-    const loadCustomers = async () => {
-      setLoading(true);
-      try {
-        const response = await fetch('/api/customers');
-        const data = await response.json();
-        setCustomers(Array.isArray(data) ? data : []);
-      } catch (error) {
-        console.error('Error loading customers:', error);
-        setCustomers([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadCustomers();
-  }, []);
 
   // Filter customers based on search term
   useEffect(() => {
@@ -151,6 +134,8 @@ export default function SearchableCustomerInput({
         >
           {loading ? (
             <div className="px-3 py-2 text-gray-400 text-sm">Loading...</div>
+          ) : fetchError ? (
+            <div className="px-3 py-2 text-red-400 text-sm">Error loading customers</div>
           ) : filteredCustomers.length === 0 ? (
             <div className="px-3 py-2 text-gray-400 text-sm">No customers found</div>
           ) : (

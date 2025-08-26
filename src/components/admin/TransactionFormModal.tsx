@@ -106,9 +106,10 @@ export default function TransactionFormModal({
     async function loadInitialCustomerName() {
       if (initial?.customer_id && open) {
         try {
-          const res = await fetch(`/api/customers/${initial.customer_id}`);
-          const customerData = await res.json();
-          setInitialCustomerName(customerData.full_name || "");
+          const res = await fetch(`/api/customers?id=${initial.customer_id}`);
+          const result = await res.json();
+          const customerData = result.data[0];
+          setInitialCustomerName(customerData?.full_name || "");
         } catch (err) {
           console.error('Error loading initial customer name:', err);
           setInitialCustomerName("");

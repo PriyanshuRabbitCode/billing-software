@@ -72,8 +72,9 @@ export default function CustomerTransactionsPage() {
 
     try {
       // Load customer data
-      const customerRes = await fetch(`/api/customers/${customerId}`);
-      const customerData = await customerRes.json();
+      const customerRes = await fetch(`/api/customers?id=${customerId}`);
+      const result = await customerRes.json();
+      const customerData = result.data[0];
       setCustomer(customerData);
 
       // Load transactions

@@ -23,11 +23,12 @@ export default function CardDetailsPage() {
       // Transform the data to include customer names
       const transformedData = await Promise.all((data ?? []).map(async (row: any) => {
         try {
-          const customerRes = await fetch(`/api/customers/${row.customer_id}`);
-          const customer = await customerRes.json();
+          const customerRes = await fetch(`/api/customers?id=${row.customer_id}`);
+          const result = await customerRes.json();
+          const customer = result.data[0];
           return {
             ...row,
-            customer_name: customer.full_name
+            customer_name: customer?.full_name || 'Unknown'
           };
         } catch (err) {
           console.error('Error fetching customer:', err);

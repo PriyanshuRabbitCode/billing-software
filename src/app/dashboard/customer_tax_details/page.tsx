@@ -20,17 +20,18 @@ export default function CustomerTaxDetailsPage() {
     
     // Transform the data to include customer names
     const transformedData = await Promise.all((data ?? []).map(async (row: any) => {
-      try {
-        const customerRes = await fetch(`/api/customers/${row.customer_id}`);
-        const customer = await customerRes.json();
-        return {
-          ...row,
-          customer_name: customer.full_name
-        };
-      } catch (err) {
-        console.error('Error fetching customer:', err);
-        return row;
-      }
+              try {
+          const customerRes = await fetch(`/api/customers?id=${row.customer_id}`);
+          const result = await customerRes.json();
+          const customer = result.data[0];
+          return {
+            ...row,
+            customer_name: customer?.full_name || 'Unknown'
+          };
+        } catch (err) {
+          console.error('Error fetching customer:', err);
+          return row;
+        }
     }));
     
     setRows(transformedData);
@@ -40,8 +41,9 @@ export default function CustomerTaxDetailsPage() {
   const checkExistingTaxDetails = useCallback(async (customerId: string) => {
     try {
       // First get customer details
-      const customerRes = await fetch(`/api/customers/${customerId}`);
-      const customer = await customerRes.json();
+      const customerRes = await fetch(`/api/customers?id=${customerId}`);
+      const result = await customerRes.json();
+      const customer = result.data[0];
       setSelectedCustomer(customer);
 
       // Then check for existing tax details
@@ -76,9 +78,10 @@ export default function CustomerTaxDetailsPage() {
   // Load customer details for PAN validation
   const loadCustomerDetails = async (customerId: string) => {
     try {
-      const res = await fetch(`/api/customers/${customerId}`);
+      const res = await fetch(`/api/customers?id=${customerId}`);
       if (!res.ok) throw new Error('Failed to load customer details');
-      return await res.json();
+      const result = await res.json();
+      return result.data[0];
     } catch (err) {
       console.error('Error loading customer details:', err);
       return null;

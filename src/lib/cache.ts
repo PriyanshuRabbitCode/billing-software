@@ -76,6 +76,8 @@ export const CACHE_KEYS = {
     `stats-${period}-${startDate || ''}-${endDate || ''}`,
   DASHBOARD: (period: string, startDate?: string, endDate?: string) => 
     `dashboard-${period}-${startDate || ''}-${endDate || ''}`,
+  CUSTOMERS: (include: string, customerId?: string, limit?: string, offset?: string, search?: string) => 
+    `customers-${include}-${customerId || 'all'}-${limit || '1000'}-${offset || '0'}-${search || ''}`,
 } as const;
 
 // Helper function to create cache key with parameters
@@ -111,4 +113,23 @@ export function invalidateDashboardCache(): void {
 export function invalidateTransactionCache(): void {
   invalidateCardPendingCache();
   invalidateDashboardCache();
+}
+
+// Helper function to invalidate all cache when customers are modified
+export function invalidateCustomerCache(): void {
+  // Clear all customer related cache
+  const keysToDelete: string[] = [];
+  for (const [key] of apiCache['cache']) {
+    if (key.startsWith('customers-')) {
+      keysToDelete.push(key);
+    }
+  }
+  keysToDelete.forEach(key => apiCache.delete(key));
+}
+
+// Helper function to invalidate all cache when any data is modified
+export function invalidateAllCache(): void {
+  invalidateCardPendingCache();
+  invalidateDashboardCache();
+  invalidateCustomerCache();
 }
