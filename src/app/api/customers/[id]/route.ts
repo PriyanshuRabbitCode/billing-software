@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, getPool } from '@/lib/postgres';
 import { schemas } from '@/lib/tableSchemas';
-import { createSuccessResponse, createErrorResponse, parseRequestBody, validateRouteId } from '@/lib/api-utils';
+import { parseRequestBody, validateRouteId } from '@/lib/api-utils';
 import { getErrorMessage } from '@/lib/utils';
 
 // TypeScript interfaces for better type safety
@@ -26,7 +26,7 @@ function createErrorResponse(message: string, status: number = 500) {
 }
 
 // Helper function for success responses
-function createSuccessResponse(data: any, status: number = 200) {
+function createSuccessResponse(data: unknown, status: number = 200) {
   return NextResponse.json(data, { status });
 }
 

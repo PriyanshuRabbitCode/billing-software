@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/postgres";
+import { getErrorMessage } from "@/lib/utils";
 
 export const runtime = 'nodejs';
 
@@ -176,7 +177,7 @@ export async function POST(req: NextRequest) {
   } catch (error: unknown) {
     console.error('Error processing payment:', error);
     return NextResponse.json({ 
-      error: error.message || 'Failed to process payment' 
+      error: getErrorMessage(error) 
     }, { status: 500 });
   }
 }
