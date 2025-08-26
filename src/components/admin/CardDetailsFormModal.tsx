@@ -66,24 +66,7 @@ export default function CardDetailsFormModal({
     }
   }, [schema.fields, values.card_name]);
 
-  // Run migration when component mounts
-  useEffect(() => {
-    async function runMigration() {
-      try {
-        const response = await fetch('/api/migrate-card-details');
-        const data = await response.json();
-        
-        if (!response.ok) {
-          console.error('Migration failed:', data.error || 'Unknown error');
-        } else {
-          console.log('Migration successful:', data.message);
-        }
-      } catch (error) {
-        console.error('Migration error:', error);
-      }
-    }
-    runMigration();
-  }, []);
+  // Migration removed - no longer needed for form functionality
 
   // Initialize form values when the modal opens or when editing
   useEffect(() => {

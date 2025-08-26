@@ -60,44 +60,31 @@ export default function TransactionsPage() {
 
   const load = useCallback(async () => {
     try {
-      // Run migration to ensure database is up to date
-      console.log('Running database migration...');
-      const migrateRes = await fetch('/api/migrate');
-      if (migrateRes.ok) {
-        console.log('Migration successful:', await migrateRes.json());
-      } else {
-        console.error('Migration failed:', await migrateRes.text());
-      }
-      
-      // Now fetch transactions
+      // Fetch transactions directly - migration not needed for data loading
       const res = await fetch(`/api/${schema.table}`);
       const data = await res.json() ?? [];
       
-      // Transform the data to include customer names
-      const transformedData = await Promise.all((data ?? []).map(async (row: any) => {
+      // Get unique customer IDs for batch fetching
+      const uniqueCustomerIds = [...new Set((data ?? []).map((row: any) => row.customer_id).filter(Boolean))];
+      
+      // Batch fetch all customers at once
+      let customerMap = new Map();
+      if (uniqueCustomerIds.length > 0) {
         try {
-          // Use cached customer data
-          const customerCacheKey = `customer-data-${row.customer_id}`;
-          let customer: any = apiCache.get(customerCacheKey);
-          
-          if (!customer) {
-            const customerRes = await fetch(`/api/customers?id=${row.customer_id}`);
-            const result = await customerRes.json();
-            customer = result.data[0];
-            apiCache.set(customerCacheKey, customer, 10 * 60 * 1000); // 10 minutes
-          }
-          
-          return {
-            ...row,
-            customer_name: customer.full_name
-          };
+          const customerRes = await fetch(`/api/customers?ids=${uniqueCustomerIds.join(',')}`);
+          const result = await customerRes.json();
+          customerMap = new Map(
+            result.data.map((customer: any) => [customer.id, customer])
+          );
         } catch (err) {
-          console.error('Error fetching customer data:', err);
-          return {
-            ...row,
-            customer_name: 'Unknown'
-          };
+          console.error('Error batch fetching customers:', err);
         }
+      }
+      
+      // Transform the data to include customer names
+      const transformedData = (data ?? []).map((row: any) => ({
+        ...row,
+        customer_name: customerMap.get(row.customer_id)?.full_name || 'Unknown'
       }));
       
       console.log('Transformed transaction data:', transformedData);

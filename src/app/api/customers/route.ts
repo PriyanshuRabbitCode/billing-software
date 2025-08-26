@@ -28,13 +28,14 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const include = searchParams.get('include');
     const customerId = searchParams.get('id');
+    const customerIds = searchParams.get('ids'); // New: batch fetching
     const limit = searchParams.get('limit') || '1000';
     const offset = searchParams.get('offset') || '0';
     const search = searchParams.get('search');
     const forceRefresh = searchParams.get('refresh') === 'true';
 
     // Create cache key
-    const cacheKey = `customers-${include || 'basic'}-${customerId || 'all'}-${limit}-${offset}-${search || ''}`;
+    const cacheKey = `customers-${include || 'basic'}-${customerId || customerIds || 'all'}-${limit}-${offset}-${search || ''}`;
     
     // Check cache first (unless force refresh)
     if (!forceRefresh) {
@@ -66,6 +67,15 @@ export async function GET(request: NextRequest) {
       whereConditions.push(`c.id = $${paramIndex}`);
       queryParams.push(Number(customerId));
       paramIndex++;
+    } else if (customerIds) {
+      // Batch fetching by multiple IDs
+      const ids = customerIds.split(',').map(id => Number(id.trim())).filter(id => !isNaN(id));
+      if (ids.length > 0) {
+        const placeholders = ids.map((_, i) => `$${paramIndex + i}`).join(',');
+        whereConditions.push(`c.id = ANY($${paramIndex})`);
+        queryParams.push(ids);
+        paramIndex++;
+      }
     }
 
     if (search) {

@@ -19,6 +19,8 @@ interface DashboardResponse {
     updated_cards: number;
   };
   upcomingDueDates: any[];
+  cardDetails: any[]; // New: card details with customer info
+  customers: any[]; // New: customer data for reuse
   cached: boolean;
   timestamp: number;
 }
@@ -83,7 +85,9 @@ export async function GET(request: NextRequest) {
       statsResult,
       recentResult,
       cardPendingResult,
-      upcomingDueDatesResult
+      upcomingDueDatesResult,
+      cardDetailsResult,
+      customersResult
     ] = await Promise.all([
       // Stats queries (customers, cards, transactions, pending, revenue)
       Promise.all([
@@ -179,6 +183,31 @@ export async function GET(request: NextRequest) {
         WHERE cd.due_date >= CURRENT_DATE
         ORDER BY cd.due_date ASC
         LIMIT 5`
+      ),
+      
+      // Card details with customer info
+      query(
+        `SELECT 
+          cd.*,
+          c.full_name as customer_name,
+          c.email_id as customer_email,
+          c.contact_no as customer_contact
+        FROM card_details cd
+        LEFT JOIN customers c ON c.id = cd.customer_id
+        ORDER BY cd.id DESC
+        LIMIT 100`
+      ),
+      
+      // All customers for reuse
+      query(
+        `SELECT 
+          c.*, 
+          (SELECT MIN(cd.due_date) 
+           FROM card_details cd 
+           WHERE cd.customer_id = c.id) as card_due_date
+        FROM customers c
+        ORDER BY c.id DESC
+        LIMIT 1000`
       )
     ]);
 
@@ -208,6 +237,8 @@ export async function GET(request: NextRequest) {
         updated_cards: cardPendingResult.rows.length,
       },
       upcomingDueDates: upcomingDueDatesResult.rows,
+      cardDetails: cardDetailsResult.rows,
+      customers: customersResult.rows,
       cached: false,
       timestamp: Date.now()
     };

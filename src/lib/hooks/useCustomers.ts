@@ -28,6 +28,7 @@ interface CustomerResponse {
 interface UseCustomersOptions {
   include?: 'basic' | 'relations';
   customerId?: number;
+  customerIds?: number[]; // New: batch fetching
   limit?: number;
   offset?: number;
   search?: string;
@@ -53,6 +54,7 @@ export function useCustomers(options: UseCustomersOptions = {}): UseCustomersRes
   const { 
     include = 'basic', 
     customerId, 
+    customerIds,
     limit = 1000, 
     offset = 0, 
     search, 
@@ -69,17 +71,18 @@ export function useCustomers(options: UseCustomersOptions = {}): UseCustomersRes
     const params = new URLSearchParams();
     if (include === 'relations') params.append('include', 'relations');
     if (customerId) params.append('id', customerId.toString());
+    if (customerIds && customerIds.length > 0) params.append('ids', customerIds.join(','));
     if (limit !== 1000) params.append('limit', limit.toString());
     if (offset !== 0) params.append('offset', offset.toString());
     if (search) params.append('search', search);
     if (forceRefresh) params.append('refresh', 'true');
     
     return `/api/customers?${params.toString()}`;
-  }, [include, customerId, limit, offset, search, forceRefresh]);
+  }, [include, customerId, customerIds, limit, offset, search, forceRefresh]);
 
   const fetchCustomers = useCallback(async () => {
     // If we're fetching basic customer data and have a recent cache, use it
-    if (include === 'basic' && !customerId && !search && !forceRefresh && 
+    if (include === 'basic' && !customerId && !customerIds && !search && !forceRefresh && 
         globalCustomerCache.length > 0 && 
         Date.now() - globalCustomerCacheTimestamp < 5 * 60 * 1000) {
       setCustomers(globalCustomerCache);
@@ -90,7 +93,7 @@ export function useCustomers(options: UseCustomersOptions = {}): UseCustomersRes
     }
 
     // If there's already a fetch in progress, wait for it
-    if (globalCustomerCachePromise && include === 'basic' && !customerId && !search) {
+    if (globalCustomerCachePromise && include === 'basic' && !customerId && !customerIds && !search) {
       setLoading(true);
       try {
         const cachedCustomers = await globalCustomerCachePromise;
@@ -120,7 +123,7 @@ export function useCustomers(options: UseCustomersOptions = {}): UseCustomersRes
       const result: CustomerResponse = await response.json();
       
       // Update global cache for basic customer data
-      if (include === 'basic' && !customerId && !search) {
+      if (include === 'basic' && !customerId && !customerIds && !search) {
         globalCustomerCache = result.data;
         globalCustomerCacheTimestamp = result.timestamp;
       }
@@ -135,11 +138,11 @@ export function useCustomers(options: UseCustomersOptions = {}): UseCustomersRes
     } finally {
       setLoading(false);
     }
-  }, [buildUrl, include, customerId, search, forceRefresh]);
+  }, [buildUrl, include, customerId, customerIds, search, forceRefresh]);
 
   const refetch = useCallback(async () => {
     // Clear global cache to force fresh fetch
-    if (include === 'basic' && !customerId && !search) {
+    if (include === 'basic' && !customerId && !customerIds && !search) {
       globalCustomerCache = [];
       globalCustomerCacheTimestamp = 0;
       globalCustomerCachePromise = null;
@@ -161,7 +164,7 @@ export function useCustomers(options: UseCustomersOptions = {}): UseCustomersRes
       const result: CustomerResponse = await response.json();
       
       // Update global cache for basic customer data
-      if (include === 'basic' && !customerId && !search) {
+      if (include === 'basic' && !customerId && !customerIds && !search) {
         globalCustomerCache = result.data;
         globalCustomerCacheTimestamp = result.timestamp;
       }
@@ -176,7 +179,7 @@ export function useCustomers(options: UseCustomersOptions = {}): UseCustomersRes
     } finally {
       setLoading(false);
     }
-  }, [buildUrl, include, customerId, search]);
+  }, [buildUrl, include, customerId, customerIds, search]);
 
   const invalidateCache = useCallback(async () => {
     try {
@@ -200,7 +203,7 @@ export function useCustomers(options: UseCustomersOptions = {}): UseCustomersRes
 
   useEffect(() => {
     // For basic customer data without specific filters, use global cache promise
-    if (include === 'basic' && !customerId && !search && !forceRefresh) {
+    if (include === 'basic' && !customerId && !customerIds && !search && !forceRefresh) {
       if (globalCustomerCachePromise) {
         setLoading(true);
         globalCustomerCachePromise.then(cachedCustomers => {
@@ -220,7 +223,7 @@ export function useCustomers(options: UseCustomersOptions = {}): UseCustomersRes
     } else {
       fetchCustomers();
     }
-  }, [fetchCustomers, include, customerId, search, forceRefresh]);
+  }, [fetchCustomers, include, customerId, customerIds, search, forceRefresh]);
 
   return {
     customers,
@@ -260,6 +263,24 @@ export function useCustomer(customerId: number, includeRelations: boolean = fals
 
   return {
     customer: customers[0] || null,
+    loading,
+    error,
+    refetch,
+    invalidateCache,
+    cached,
+    timestamp
+  };
+}
+
+// Helper function to get multiple customers by IDs
+export function useCustomersByIds(customerIds: number[], includeRelations: boolean = false) {
+  const { customers, loading, error, refetch, invalidateCache, cached, timestamp } = useCustomers({
+    customerIds,
+    include: includeRelations ? 'relations' : 'basic'
+  });
+
+  return {
+    customers,
     loading,
     error,
     refetch,

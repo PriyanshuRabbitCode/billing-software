@@ -19,6 +19,8 @@ interface DashboardData {
   recent: any[];
   cardPendingAmounts: CardPendingAmounts;
   upcomingDueDates: any[];
+  cardDetails: any[]; // New: card details with customer info
+  customers: any[]; // New: customer data for reuse
   cached: boolean;
   timestamp: number;
 }
