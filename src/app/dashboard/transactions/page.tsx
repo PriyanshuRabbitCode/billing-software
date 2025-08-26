@@ -1,16 +1,13 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-// Use our API backed by PostgreSQL
 import DataTable from "@/components/admin/DataTable";
 import TransactionFormModal from "@/components/admin/TransactionFormModal";
 import { schemas } from "@/lib/tableSchemas";
-import { apiCache } from "@/lib/cache";
-import { invalidateTransactionCache } from "@/lib/cache";
+import { useData } from "@/lib/context/DataContext";
 
 const schema = schemas.transactions;
 
 export default function TransactionsPage() {
-  const [rows, setRows] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
   const [totals, setTotals] = useState({
@@ -21,6 +18,13 @@ export default function TransactionsPage() {
     creditCount: 0,
     debitCount: 0
   });
+
+  // Use the global data context
+  const { 
+    state: { transactions, loading, error }, 
+    fetchTransactions, 
+    invalidateCache 
+  } = useData();
 
 
 
@@ -60,46 +64,22 @@ export default function TransactionsPage() {
 
   const load = useCallback(async () => {
     try {
-      // Fetch transactions directly - migration not needed for data loading
-      const res = await fetch(`/api/${schema.table}`);
-      const data = await res.json() ?? [];
-      
-      // Get unique customer IDs for batch fetching
-      const uniqueCustomerIds = [...new Set((data ?? []).map((row: any) => row.customer_id).filter(Boolean))];
-      
-      // Batch fetch all customers at once
-      let customerMap = new Map();
-      if (uniqueCustomerIds.length > 0) {
-        try {
-          const customerRes = await fetch(`/api/customers?ids=${uniqueCustomerIds.join(',')}`);
-          const result = await customerRes.json();
-          customerMap = new Map(
-            result.data.map((customer: any) => [customer.id, customer])
-          );
-        } catch (err) {
-          console.error('Error batch fetching customers:', err);
-        }
-      }
-      
-      // Transform the data to include customer names
-      const transformedData = (data ?? []).map((row: any) => ({
-        ...row,
-        customer_name: customerMap.get(row.customer_id)?.full_name || 'Unknown'
-      }));
-      
-      console.log('Transformed transaction data:', transformedData);
-      setRows(transformedData);
-      
-      // Calculate totals from transaction data
-      const totals = calculateTotals(transformedData);
-      setTotals(totals);
+      // Fetch transactions using the unified API
+      await fetchTransactions();
     } catch (err) {
       console.error('Error loading transactions:', err);
-      setRows([]);
     }
-  }, []);
+  }, [fetchTransactions]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { 
+    load(); 
+  }, [load]);
+
+  // Calculate totals whenever transactions change
+  useEffect(() => {
+    const totals = calculateTotals(transactions);
+    setTotals(totals);
+  }, [transactions]);
 
 
 
@@ -170,7 +150,7 @@ export default function TransactionsPage() {
       console.log('Transaction saved successfully');
       
       // Invalidate cache to ensure dashboard data is fresh
-      invalidateTransactionCache();
+      invalidateCache();
       
       await load();
       setOpen(false);
@@ -190,7 +170,7 @@ export default function TransactionsPage() {
     if (!confirm("Delete this record?")) return;
     await fetch(`/api/${schema.table}/${row.id}`, { method: 'DELETE' });
     // Invalidate cache to ensure dashboard data is fresh
-    invalidateTransactionCache();
+    invalidateCache();
     await load();
   };
 
@@ -227,7 +207,7 @@ export default function TransactionsPage() {
           <h3 className="text-gray-400 text-sm font-medium">Total Tax Amount</h3>
           <p className="text-2xl font-bold text-white">{formatCurrency(totals.totalTax)}</p>
           <div className="mt-2 text-sm text-gray-400">
-            Avg: {formatCurrency(totals.totalTax / (rows.length || 1))}
+            Avg: {formatCurrency(totals.totalTax / (transactions.length || 1))}
           </div>
         </div>
 
@@ -237,7 +217,7 @@ export default function TransactionsPage() {
           <h3 className="text-gray-400 text-sm font-medium">Total Profit</h3>
           <p className="text-2xl font-bold text-white">{formatCurrency(totals.totalProfit)}</p>
           <div className="mt-2 text-sm text-gray-400">
-            Avg: {formatCurrency(totals.totalProfit / (rows.length || 1))}
+            Avg: {formatCurrency(totals.totalProfit / (transactions.length || 1))}
           </div>
         </div>
 
@@ -252,7 +232,7 @@ export default function TransactionsPage() {
 
 
 
-      <DataTable data={rows} columns={schema.listColumns as any} onEdit={(r)=>{setEditing(r); setOpen(true);}} onDelete={onDelete} showActions={false} />
+      <DataTable data={transactions} columns={schema.listColumns as any} onEdit={(r)=>{setEditing(r); setOpen(true);}} onDelete={onDelete} showActions={false} />
       <TransactionFormModal 
         open={open} 
         onClose={()=>setOpen(false)} 

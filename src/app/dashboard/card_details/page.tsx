@@ -3,7 +3,7 @@ import { useState } from "react";
 import DataTable from "@/components/admin/DataTable";
 import CardDetailsFormModal from "@/components/admin/CardDetailsFormModal";
 import { schemas } from "@/lib/tableSchemas";
-import { useCardDetails } from "@/lib/hooks/useCardDetails";
+import { useData } from "@/lib/context/DataContext";
 
 const schema = schemas.card_details;
 
@@ -11,16 +11,12 @@ export default function CardDetailsPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
 
-  // Use optimized card details hook that fetches everything in one API call
+  // Use the global data context
   const { 
-    cardDetails, 
-    customers, 
-    loading, 
-    error, 
-    cached, 
-    timestamp, 
-    refetch 
-  } = useCardDetails();
+    state: { cardDetails, loading, error }, 
+    fetchCardDetails, 
+    invalidateCache 
+  } = useData();
 
   // Transform card details to include customer names
   const rows = cardDetails.map((card: any) => ({
@@ -89,7 +85,7 @@ export default function CardDetailsPage() {
         }
       }
       
-      await refetch();
+      await fetchCardDetails({ forceRefresh: true });
       setOpen(false);
     } catch (error) {
       console.error('Submit error:', error);
@@ -112,7 +108,7 @@ export default function CardDetailsPage() {
         throw new Error(errorData.error || 'Delete failed');
       }
       
-      await refetch();
+      await fetchCardDetails({ forceRefresh: true });
     } catch (error) {
       console.error('Delete error:', error);
       if (error instanceof Error) {
@@ -124,7 +120,7 @@ export default function CardDetailsPage() {
   };
 
   // Show error state if there's an error
-  if (error) {
+  if (error.cardDetails) {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -132,7 +128,7 @@ export default function CardDetailsPage() {
         </div>
         <div className="bg-red-900/20 border border-red-500/50 rounded-xl p-6">
           <h2 className="text-xl font-semibold text-red-400 mb-2">Error Loading Card Details</h2>
-          <p className="text-red-300 mb-4">{error}</p>
+          <p className="text-red-300 mb-4">{error.cardDetails}</p>
         </div>
       </div>
     );
@@ -152,15 +148,8 @@ export default function CardDetailsPage() {
         </div>
       </div>
 
-      {/* Cache Status Indicator */}
-      {cached && (
-        <div className="text-xs text-gray-500">
-          Data loaded from cache • Last updated: {new Date(timestamp).toLocaleTimeString()}
-        </div>
-      )}
-
       {/* Loading State */}
-      {loading && (
+      {loading.cardDetails && (
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
           <span className="ml-2 text-gray-400">Loading card details...</span>
@@ -168,7 +157,7 @@ export default function CardDetailsPage() {
       )}
 
       {/* Data Table */}
-      {!loading && (
+      {!loading.cardDetails && (
         <DataTable 
           data={rows} 
           columns={schema.listColumns as any} 

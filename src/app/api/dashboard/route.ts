@@ -19,8 +19,9 @@ interface DashboardResponse {
     updated_cards: number;
   };
   upcomingDueDates: any[];
-  cardDetails: any[]; // New: card details with customer info
-  customers: any[]; // New: customer data for reuse
+  cardDetails: any[]; // Card details with customer info
+  customers: any[]; // Customer data for reuse
+  transactions: any[]; // Transactions with customer info
   cached: boolean;
   timestamp: number;
 }
@@ -32,11 +33,14 @@ export async function GET(request: NextRequest) {
     const customStartDate = searchParams.get('startDate');
     const customEndDate = searchParams.get('endDate');
     const forceRefresh = searchParams.get('refresh') === 'true';
-    const includeCardDetails = searchParams.get('include') === 'card_details' || searchParams.get('include') === 'all';
-    const includeCustomers = searchParams.get('include') === 'customers' || searchParams.get('include') === 'all';
+    const include = searchParams.get('include') || '';
+    const includeStats = !include || include.includes('stats') || include === 'all';
+    const includeCardDetails = include.includes('cardDetails') || include === 'all';
+    const includeCustomers = include.includes('customers') || include === 'all';
+    const includeTransactions = include.includes('transactions') || include === 'all';
     
     // Create cache key
-    const cacheKey = `dashboard-${period}-${customStartDate || ''}-${customEndDate || ''}-${includeCardDetails ? 'cards' : ''}-${includeCustomers ? 'customers' : ''}`;
+    const cacheKey = `dashboard-${period}-${customStartDate || ''}-${customEndDate || ''}-${include}`;
     
     // Check cache first (unless force refresh)
     if (!forceRefresh) {
@@ -83,103 +87,113 @@ export async function GET(request: NextRequest) {
     const endDateStr = endDate.toISOString();
 
     // Build queries array based on what's needed
-    const queries: Promise<any>[] = [
-      // Stats queries (always needed)
-      Promise.all([
-        query<{ count: string }>(
-          `SELECT COUNT(DISTINCT c.id)::int as count 
-           FROM customers c
-           WHERE c.created_at >= $1 AND c.created_at <= $2`,
-          [startDateStr, endDateStr]
-        ),
-        query<{ count: string }>(
-          `SELECT COUNT(DISTINCT cd.id)::int as count 
-           FROM card_details cd
-           WHERE EXISTS (
-             SELECT 1 FROM transactions t 
-             WHERE t.card_number = cd.card_number 
-             AND t.customer_id = cd.customer_id
-             AND t.transaction_date >= $1 AND t.transaction_date <= $2
-           )`,
-          [startDateStr, endDateStr]
-        ),
-        query<{ count: string }>(
-          `SELECT COUNT(*)::int as count FROM transactions WHERE transaction_date >= $1 AND transaction_date <= $2`,
-          [startDateStr, endDateStr]
-        ),
-        query<{ total: string | null }>(
-          `SELECT COALESCE(SUM(t.pending_amount),0) as total 
+    const queries: Promise<any>[] = [];
+
+    // Stats queries (when stats are requested)
+    if (includeStats) {
+      queries.push(
+        Promise.all([
+          query<{ count: string }>(
+            `SELECT COUNT(DISTINCT c.id)::int as count 
+             FROM customers c
+             WHERE c.created_at >= $1 AND c.created_at <= $2`,
+            [startDateStr, endDateStr]
+          ),
+          query<{ count: string }>(
+            `SELECT COUNT(DISTINCT cd.id)::int as count 
+             FROM card_details cd
+             WHERE EXISTS (
+               SELECT 1 FROM transactions t 
+               WHERE t.card_number = cd.card_number 
+               AND t.customer_id = cd.customer_id
+               AND t.transaction_date >= $1 AND t.transaction_date <= $2
+             )`,
+            [startDateStr, endDateStr]
+          ),
+          query<{ count: string }>(
+            `SELECT COUNT(*)::int as count FROM transactions WHERE transaction_date >= $1 AND transaction_date <= $2`,
+            [startDateStr, endDateStr]
+          ),
+          query<{ total: string | null }>(
+            `SELECT COALESCE(SUM(t.pending_amount),0) as total 
+             FROM transactions t
+             WHERE t.transaction_date >= $1 AND t.transaction_date <= $2`,
+            [startDateStr, endDateStr]
+          ),
+          query<{ revenue: string | null }>(
+            `SELECT COALESCE(SUM(profit_amount),0) as revenue FROM transactions WHERE transaction_date >= $1 AND transaction_date <= $2`,
+            [startDateStr, endDateStr]
+          )
+        ])
+      );
+      
+      // Recent transactions (when stats are requested)
+      queries.push(
+        query(
+          `SELECT t.id, t.payable_amount, t.status, t.transaction_date, c.full_name AS customer_name, 
+                  t.pending_amount
            FROM transactions t
-           WHERE t.transaction_date >= $1 AND t.transaction_date <= $2`,
-          [startDateStr, endDateStr]
-        ),
-        query<{ revenue: string | null }>(
-          `SELECT COALESCE(SUM(profit_amount),0) as revenue FROM transactions WHERE transaction_date >= $1 AND transaction_date <= $2`,
+           LEFT JOIN customers c ON c.id = t.customer_id
+           WHERE t.transaction_date >= $1 AND t.transaction_date <= $2
+           ORDER BY t.transaction_date DESC
+           LIMIT 5`,
           [startDateStr, endDateStr]
         )
-      ]),
+      );
       
-      // Recent transactions (always needed)
-      query(
-        `SELECT t.id, t.payable_amount, t.status, t.transaction_date, c.full_name AS customer_name, 
-                t.pending_amount
-         FROM transactions t
-         LEFT JOIN customers c ON c.id = t.customer_id
-         WHERE t.transaction_date >= $1 AND t.transaction_date <= $2
-         ORDER BY t.transaction_date DESC
-         LIMIT 5`,
-        [startDateStr, endDateStr]
-      ),
-      
-      // Card pending amounts calculation (always needed)
-      query(`
-        WITH transaction_totals AS (
+      // Card pending amounts calculation (when stats are requested)
+      queries.push(
+        query(`
+          WITH transaction_totals AS (
+            SELECT 
+              customer_id,
+              card_number,
+              SUM(CASE WHEN transaction_type = 'debit' THEN base_amount ELSE 0 END) as total_debits,
+              SUM(CASE WHEN transaction_type = 'credit' THEN base_amount ELSE 0 END) as total_credits
+            FROM transactions 
+            WHERE card_number IS NOT NULL AND card_number != ''
+            GROUP BY customer_id, card_number
+          ),
+          card_names AS (
+            SELECT DISTINCT cd.customer_id, cd.card_number, cd.card_name
+            FROM card_details cd
+            WHERE cd.card_number IS NOT NULL AND cd.card_number != ''
+          )
+          INSERT INTO card_pending_amounts (customer_id, card_number, card_name, pending_amount, received_amount)
           SELECT 
-            customer_id,
-            card_number,
-            SUM(CASE WHEN transaction_type = 'debit' THEN base_amount ELSE 0 END) as total_debits,
-            SUM(CASE WHEN transaction_type = 'credit' THEN base_amount ELSE 0 END) as total_credits
-          FROM transactions 
-          WHERE card_number IS NOT NULL AND card_number != ''
-          GROUP BY customer_id, card_number
-        ),
-        card_names AS (
-          SELECT DISTINCT cd.customer_id, cd.card_number, cd.card_name
-          FROM card_details cd
-          WHERE cd.card_number IS NOT NULL AND cd.card_number != ''
-        )
-        INSERT INTO card_pending_amounts (customer_id, card_number, card_name, pending_amount, received_amount)
-        SELECT 
-          tt.customer_id,
-          tt.card_number,
-          COALESCE(cn.card_name, 'Unknown Card') as card_name,
-          COALESCE(tt.total_debits, 0) - COALESCE(tt.total_credits, 0) as pending_amount,
-          COALESCE(tt.total_credits, 0) as received_amount
-        FROM transaction_totals tt
-        LEFT JOIN card_names cn ON cn.customer_id = tt.customer_id AND cn.card_number = tt.card_number
-        ON CONFLICT (customer_id, card_number) 
-        DO UPDATE SET 
-          pending_amount = EXCLUDED.pending_amount,
-          received_amount = EXCLUDED.received_amount,
-          card_name = EXCLUDED.card_name,
-          updated_at = NOW()
-        RETURNING customer_id, card_number, card_name, pending_amount, received_amount
-      `),
+            tt.customer_id,
+            tt.card_number,
+            COALESCE(cn.card_name, 'Unknown Card') as card_name,
+            COALESCE(tt.total_debits, 0) - COALESCE(tt.total_credits, 0) as pending_amount,
+            COALESCE(tt.total_credits, 0) as received_amount
+          FROM transaction_totals tt
+          LEFT JOIN card_names cn ON cn.customer_id = tt.customer_id AND cn.card_number = tt.card_number
+          ON CONFLICT (customer_id, card_number) 
+          DO UPDATE SET 
+            pending_amount = EXCLUDED.pending_amount,
+            received_amount = EXCLUDED.received_amount,
+            card_name = EXCLUDED.card_name,
+            updated_at = NOW()
+          RETURNING customer_id, card_number, card_name, pending_amount, received_amount
+        `)
+      );
       
-      // Upcoming due dates (always needed)
-      query(
-        `SELECT 
-          cd.due_date,
-          cd.card_number,
-          cd.card_name,
-          c.full_name as customer_name
-        FROM card_details cd
-        JOIN customers c ON c.id = cd.customer_id
-        WHERE cd.due_date >= CURRENT_DATE
-        ORDER BY cd.due_date ASC
-        LIMIT 5`
-      )
-    ];
+      // Upcoming due dates (when stats are requested)
+      queries.push(
+        query(
+          `SELECT 
+            cd.due_date,
+            cd.card_number,
+            cd.card_name,
+            c.full_name as customer_name
+          FROM card_details cd
+          JOIN customers c ON c.id = cd.customer_id
+          WHERE cd.due_date >= CURRENT_DATE
+          ORDER BY cd.due_date ASC
+          LIMIT 5`
+        )
+      );
+    }
 
     // Add optional queries based on include parameters
     if (includeCardDetails) {
@@ -215,34 +229,52 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    if (includeTransactions) {
+      // Get pagination parameters for transactions
+      const transactionLimit = searchParams.get('transactionLimit') || '1000';
+      const transactionOffset = searchParams.get('transactionOffset') || '0';
+      
+      queries.push(
+        // Transactions with customer info and pagination
+        query(
+          `SELECT 
+            t.*,
+            c.full_name as customer_name,
+            c.email_id as customer_email,
+            c.contact_no as customer_contact
+          FROM transactions t
+          LEFT JOIN customers c ON c.id = t.customer_id
+          ORDER BY t.transaction_date DESC, t.id DESC
+          LIMIT $1 OFFSET $2`,
+          [Number(transactionLimit), Number(transactionOffset)]
+        )
+      );
+    }
+
         // Execute all queries in parallel
     const results = await Promise.all(queries);
 
     // Extract results based on what was requested
     let resultIndex = 0;
     
-    // Stats results (always present)
-    const statsResult = results[resultIndex++];
-    const [c, a, t, pendingRows, revenueRows] = statsResult;
-    
-    // Recent transactions (always present)
-    const recentResult = results[resultIndex++];
-    
-    // Card pending amounts (always present)
-    const cardPendingResult = results[resultIndex++];
-    const cardPendingTotals = cardPendingResult.rows.reduce((acc: { total_pending: number; total_received: number }, row: any) => {
-      acc.total_pending += Number(row.pending_amount || 0);
-      acc.total_received += Number(row.received_amount || 0);
-      return acc;
-    }, { total_pending: 0, total_received: 0 });
-    
-    // Upcoming due dates (always present)
-    const upcomingDueDatesResult = results[resultIndex++];
-    
-    // Optional results
+    // Initialize default values
+    let statsResult: any = null;
+    let recentResult = { rows: [] };
+    let cardPendingResult = { rows: [] };
+    let upcomingDueDatesResult = { rows: [] };
     let cardDetailsResult = { rows: [] };
     let customersResult = { rows: [] };
+    let transactionsResult = { rows: [] };
     
+    // Extract stats results (when requested)
+    if (includeStats) {
+      statsResult = results[resultIndex++];
+      recentResult = results[resultIndex++];
+      cardPendingResult = results[resultIndex++];
+      upcomingDueDatesResult = results[resultIndex++];
+    }
+    
+    // Extract optional results
     if (includeCardDetails) {
       cardDetailsResult = results[resultIndex++];
     }
@@ -250,15 +282,32 @@ export async function GET(request: NextRequest) {
     if (includeCustomers) {
       customersResult = results[resultIndex++];
     }
+    
+    if (includeTransactions) {
+      transactionsResult = results[resultIndex++];
+    }
+
+    // Calculate card pending totals (when stats are requested)
+    const cardPendingTotals = cardPendingResult.rows.reduce((acc: { total_pending: number; total_received: number }, row: any) => {
+      acc.total_pending += Number(row.pending_amount || 0);
+      acc.total_received += Number(row.received_amount || 0);
+      return acc;
+    }, { total_pending: 0, total_received: 0 });
 
     // Build response object
     const response: DashboardResponse = {
-      stats: {
-        customers: Number(c.rows[0]?.count ?? 0),
-        cards: Number(a.rows[0]?.count ?? 0),
-        transactions: Number(t.rows[0]?.count ?? 0),
-        pending: Number(pendingRows.rows[0]?.total ?? 0),
-        revenue: Number(revenueRows.rows[0]?.revenue ?? 0),
+      stats: includeStats ? {
+        customers: Number(statsResult?.[0]?.rows[0]?.count ?? 0),
+        cards: Number(statsResult?.[1]?.rows[0]?.count ?? 0),
+        transactions: Number(statsResult?.[2]?.rows[0]?.count ?? 0),
+        pending: Number(statsResult?.[3]?.rows[0]?.total ?? 0),
+        revenue: Number(statsResult?.[4]?.rows[0]?.revenue ?? 0),
+      } : {
+        customers: 0,
+        cards: 0,
+        transactions: 0,
+        pending: 0,
+        revenue: 0,
       },
       recent: recentResult.rows,
       cardPendingAmounts: {
@@ -269,27 +318,37 @@ export async function GET(request: NextRequest) {
       upcomingDueDates: upcomingDueDatesResult.rows,
       cardDetails: cardDetailsResult.rows,
       customers: customersResult.rows,
+      transactions: transactionsResult.rows,
       cached: false,
       timestamp: Date.now()
     };
 
-    // Cache the response with different TTL based on period
+    // Cache the response with optimized TTL
     let cacheTTL: number;
-    switch (period) {
-      case 'daily':
-        cacheTTL = 2 * 60 * 1000; // 2 minutes
-        break;
-      case 'weekly':
-        cacheTTL = 5 * 60 * 1000; // 5 minutes
-        break;
-      case 'monthly':
-        cacheTTL = 15 * 60 * 1000; // 15 minutes
-        break;
-      case 'yearly':
-        cacheTTL = 30 * 60 * 1000; // 30 minutes
-        break;
-      default:
-        cacheTTL = 10 * 60 * 1000; // 10 minutes
+    if (includeTransactions) {
+      // Heavy queries with transactions - shorter cache
+      cacheTTL = 30 * 1000; // 30 seconds
+    } else if (includeCustomers) {
+      // Customer data - medium cache
+      cacheTTL = 60 * 1000; // 1 minute
+    } else {
+      // Stats only - longer cache based on period
+      switch (period) {
+        case 'daily':
+          cacheTTL = 2 * 60 * 1000; // 2 minutes
+          break;
+        case 'weekly':
+          cacheTTL = 5 * 60 * 1000; // 5 minutes
+          break;
+        case 'monthly':
+          cacheTTL = 15 * 60 * 1000; // 15 minutes
+          break;
+        case 'yearly':
+          cacheTTL = 30 * 60 * 1000; // 30 minutes
+          break;
+        default:
+          cacheTTL = 10 * 60 * 1000; // 10 minutes
+      }
     }
 
     apiCache.set(cacheKey, response, cacheTTL);

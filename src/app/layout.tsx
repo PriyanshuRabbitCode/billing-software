@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ChunkErrorHandler } from "@/components/ChunkErrorHandler";
+import { DataProvider } from "@/lib/context/DataContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,7 +30,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-black text-white`}
       >
         <ChunkErrorHandler />
-        {children}
+        <DataProvider>
+          {children}
+        </DataProvider>
       </body>
     </html>
   );

@@ -6,7 +6,7 @@ import CombinedCustomerForm from "@/components/admin/CombinedCustomerForm";
 import CustomerViewModal from "@/components/admin/CustomerViewModal";
 import { schemas } from "@/lib/tableSchemas";
 import PopupModal from "@/components/ui/PopupModal";
-import { useCustomers, invalidateCustomerCache } from "@/lib/hooks/useCustomers";
+import { useData } from "@/lib/context/DataContext";
 
 const schema = schemas.customers;
 
@@ -30,16 +30,12 @@ export default function CustomersPage() {
     type: "info"
   });
 
-  // Use the new consolidated customers hook
+  // Use the global data context
   const { 
-    customers: rows, 
-    loading, 
-    error, 
-    refetch, 
-    invalidateCache,
-    cached,
-    timestamp 
-  } = useCustomers();
+    state: { customers: rows, loading, error }, 
+    fetchCustomers, 
+    invalidateCache 
+  } = useData();
 
   const handleSave = async (values: Record<string, any>) => {
     try {
@@ -87,8 +83,8 @@ export default function CustomersPage() {
         const updatedData = await res.json().catch(() => ({ id }));
         
         // Invalidate cache and refetch
-        await invalidateCustomerCache();
-        await refetch();
+        await invalidateCache();
+        await fetchCustomers({ forceRefresh: true });
         
         return updatedData || { id };
       } else {
@@ -107,8 +103,8 @@ export default function CustomersPage() {
         const newData = await res.json().catch(() => ({}));
         
         // Invalidate cache and refetch
-        await invalidateCustomerCache();
-        await refetch();
+        await invalidateCache();
+        await fetchCustomers({ forceRefresh: true });
         
         return newData;
       }
@@ -139,8 +135,8 @@ export default function CustomersPage() {
       }
       
       // Invalidate cache and refetch
-      await invalidateCustomerCache();
-      await refetch();
+      await invalidateCache();
+      await fetchCustomers({ forceRefresh: true });
       
       setPopup({
         open: true,
@@ -164,7 +160,7 @@ export default function CustomersPage() {
   };
 
   // Show error state if there's an error
-  if (error) {
+  if (error.customers) {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -172,9 +168,9 @@ export default function CustomersPage() {
         </div>
         <div className="bg-red-900/20 border border-red-500/50 rounded-xl p-6">
           <h2 className="text-xl font-semibold text-red-400 mb-2">Error Loading Customers</h2>
-          <p className="text-red-300 mb-4">{error}</p>
+          <p className="text-red-300 mb-4">{error.customers}</p>
           <button 
-            onClick={refetch}
+            onClick={() => fetchCustomers({ forceRefresh: true })}
             className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
           >
             Retry
@@ -198,15 +194,8 @@ export default function CustomersPage() {
         </div>
       </div>
 
-      {/* Cache Status Indicator */}
-      {cached && (
-        <div className="text-xs text-gray-500">
-          Data loaded from cache • Last updated: {new Date(timestamp).toLocaleTimeString()}
-        </div>
-      )}
-
       {/* Loading State */}
-      {loading && (
+      {loading.customers && (
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
           <span className="ml-2 text-gray-400">Loading customers...</span>
@@ -214,7 +203,7 @@ export default function CustomersPage() {
       )}
 
       {/* Data Table */}
-      {!loading && (
+      {!loading.customers && (
         <DataTable 
           data={rows} 
           columns={schema.listColumns as any} 
