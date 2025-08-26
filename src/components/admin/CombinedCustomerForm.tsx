@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { schemas } from "@/lib/tableSchemas";
 import { CrudField } from "./CrudFormModal";
 
@@ -277,7 +277,7 @@ export default function CombinedCustomerForm({
             value: r[f.relation!.valueField], 
             label: r[f.relation!.labelField] 
           }));
-        } catch (e) {
+        } catch {
           loaded[f.name] = [];
         }
       }
@@ -490,19 +490,7 @@ export default function CombinedCustomerForm({
     return Object.keys(e).length === 0;
   };
 
-  // Validate PAN number format
-  const validatePAN = (pan: string): boolean => {
-    // PAN format: AAAAA1234A (5 letters + 4 numbers + 1 letter)
-    const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
-    return panRegex.test(pan);
-  };
 
-  // Validate Aadhaar number format
-  const validateAadhaar = (aadhaar: string): boolean => {
-    // Aadhaar format: 12 digits
-    const aadhaarRegex = /^\d{12}$/;
-    return aadhaarRegex.test(aadhaar);
-  };
 
   // Handle file upload for identity documents
   const handleFileUpload = async (file: File, customerId: string, docType: string) => {

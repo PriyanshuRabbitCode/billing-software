@@ -301,7 +301,6 @@ export default function CustomerTransactionsPage() {
               const totalDeposit = filteredTransactions.reduce((sum, tx) => sum + (Number(tx.deposit_amount) || 0), 0);
               const totalWithdraw = filteredTransactions.reduce((sum, tx) => sum + (Number(tx.withdraw_amount) || 0), 0);
               const currentPending = filteredTransactions.reduce((sum, tx) => sum + (Number(tx.pending_amount) || 0), 0);
-              const balance = totalDeposit - totalWithdraw;
               
               return (
                 <div className="mt-4 pt-4 border-t border-gray-700">

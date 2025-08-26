@@ -73,17 +73,7 @@ export default function CustomerTaxDetailsPage() {
 
 
 
-  // Load customer details for PAN validation
-  const loadCustomerDetails = async (customerId: string) => {
-    try {
-      const res = await fetch(`/api/customers/${customerId}`);
-      if (!res.ok) throw new Error('Failed to load customer details');
-      return await res.json();
-    } catch (err) {
-      console.error('Error loading customer details:', err);
-      return null;
-    }
-  };
+
 
   const onSubmit = async (values: Record<string, any>) => {
     try {

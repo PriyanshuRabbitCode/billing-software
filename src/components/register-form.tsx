@@ -63,7 +63,7 @@ export function RegisterForm({
         // If email confirmation is not required or already confirmed
         router.push('/admin');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
       setIsLoading(false);

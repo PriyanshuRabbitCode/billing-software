@@ -38,7 +38,7 @@ export default function CustomersPage() {
       const res = await fetch(`/api/${schema.table}`);
       const data = await res.json();
       setRows(Array.isArray(data) ? data : []);
-    } catch (err) { setRows([]); }
+    } catch { setRows([]); }
     setLoading(false);
   }, []);
 

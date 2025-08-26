@@ -81,7 +81,7 @@ export async function PATCH(
     let body: any;
     try {
       body = await req.json();
-    } catch (error) {
+    } catch {
       return createErrorResponse("Invalid JSON in request body", 400);
     }
 
@@ -124,9 +124,9 @@ export async function PATCH(
     }
     
     return createSuccessResponse(rows[0]);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('PATCH customer error:', error);
-    return createErrorResponse(error.message || 'Internal server error');
+    return createErrorResponse(error instanceof Error ? error.message : 'Internal server error');
   }
 }
 
@@ -159,8 +159,8 @@ export async function DELETE(
     }
 
     return createSuccessResponse({ ok: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('DELETE customer error:', error);
-    return createErrorResponse(error.message || 'Internal server error');
+    return createErrorResponse(error instanceof Error ? error.message : 'Internal server error');
   }
 }

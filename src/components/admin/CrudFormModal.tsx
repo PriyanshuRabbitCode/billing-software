@@ -73,7 +73,7 @@ export default function CrudFormModal<T>({
           const res = await fetch(`/api/rel/${f.relation!.table}`);
           const list = (await res.json()) as Array<Record<string, any>>;
           loaded[f.name] = list.map((r) => ({ value: r[f.relation!.valueField], label: r[f.relation!.labelField] }));
-        } catch (e) {
+        } catch {
           loaded[f.name] = [];
         }
       }

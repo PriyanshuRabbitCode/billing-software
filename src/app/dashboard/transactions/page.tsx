@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import DataTable from "@/components/admin/DataTable";
 import TransactionFormModal from "@/components/admin/TransactionFormModal";
 import { schemas } from "@/lib/tableSchemas";
-import { useCachedAPI } from "@/lib/hooks/useCachedAPI";
 import { apiCache } from "@/lib/cache";
 
 const schema = schemas.transactions;

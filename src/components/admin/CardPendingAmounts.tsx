@@ -155,7 +155,7 @@ export default function CardPendingAmounts({ selectedCustomerId }: CardPendingAm
               </tr>
             </thead>
             <tbody>
-              {cardPendingData.map((card, index) => (
+              {cardPendingData.map((card) => (
                 <tr key={card.cardNumber} className="border-b border-gray-700 hover:bg-gray-700/50">
                   <td className="py-3 px-2 text-white">
                     {card.cardNumber.replace(/(\d{4})(?=\d)/g, '$1 ')}

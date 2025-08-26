@@ -3,7 +3,6 @@
 import { CreditCard, DollarSign, Users, CreditCard as CardIcon, Calendar, CalendarDays } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useStats } from '@/lib/hooks/useCachedAPI';
-import { invalidateCardPendingCache } from '@/lib/cache';
 // Fetch stats from our server API backed by PostgreSQL
 
 export default function DashboardPage() {

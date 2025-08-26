@@ -83,8 +83,7 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // Calculate new pending amount after payment
-    const newPendingAmount = Math.max(0, currentPendingAmount - amount);
+
     
     // Recalculate the actual pending amount from all transactions (including payments)
     const recalculateQuery = `
@@ -174,7 +173,7 @@ export async function POST(req: NextRequest) {
       }
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error processing payment:', error);
     return NextResponse.json({ 
       error: error.message || 'Failed to process payment' 

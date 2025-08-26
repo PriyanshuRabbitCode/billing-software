@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
 
     // Check if value exists, excluding the current customer if customerId is provided
     let excludeClause = '';
-    let params: any[] = [value];
+    const params: any[] = [value];
     
     if (customerId) {
       if (field === 'pan_no' || field === 'aadhaar_no') {

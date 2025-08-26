@@ -47,14 +47,14 @@ export function LoginForm({
     setError(null);
     
     try {
-      const result = await signIn({
+      await signIn({
         email: data.email,
         password: data.password,
       });
       
       console.log('Login successful, redirecting to admin page');
       router.push('/admin');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Login error:', err);
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
