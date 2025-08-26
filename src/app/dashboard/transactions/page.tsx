@@ -59,16 +59,7 @@ export default function TransactionsPage() {
 
   const load = useCallback(async () => {
     try {
-      // Run migration to ensure database is up to date
-      console.log('Running database migration...');
-      const migrateRes = await fetch('/api/migrate');
-      if (migrateRes.ok) {
-        console.log('Migration successful:', await migrateRes.json());
-      } else {
-        console.error('Migration failed:', await migrateRes.text());
-      }
-      
-      // Now fetch transactions
+      // Fetch transactions directly - migration not needed for data loading
       const res = await fetch(`/api/${schema.table}`);
       const data = await res.json() ?? [];
       

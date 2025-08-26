@@ -14,9 +14,7 @@ export default function CardDetailsPage() {
 
   const load = useCallback(async () => {
     try {
-      // First ensure the card_number column exists
-      await fetch('/api/migrate');
-      
+      // Fetch card details directly - migration not needed for data loading
       const res = await fetch(`/api/${schema.table}`);
       const data = await res.json();
       
