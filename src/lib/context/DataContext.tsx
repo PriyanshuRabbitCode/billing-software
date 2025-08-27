@@ -242,7 +242,7 @@ export function DataProvider({ children }: DataProviderProps) {
     const { include = 'basic', forceRefresh = false } = options;
     
     // Check cache first
-    if (!forceRefresh && state.customers.length > 0 && isCacheValid(state.cache.customers, 'other')) {
+    if (!forceRefresh && state.customers && state.customers.length > 0 && isCacheValid(state.cache.customers, 'other')) {
       return;
     }
 
@@ -258,7 +258,11 @@ export function DataProvider({ children }: DataProviderProps) {
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
       const result = await response.json();
-      dispatch({ type: 'SET_CUSTOMERS', payload: result.data });
+      if (result.success) {
+        dispatch({ type: 'SET_CUSTOMERS', payload: result.data });
+      } else {
+        throw new Error(result.error || 'Failed to fetch customers');
+      }
     } catch (error) {
       dispatch({ 
         type: 'SET_ERROR', 
@@ -267,14 +271,14 @@ export function DataProvider({ children }: DataProviderProps) {
     } finally {
       dispatch({ type: 'SET_LOADING', payload: { key: 'customers', value: false } });
     }
-  }, [state.customers.length, state.cache.customers]);
+  }, [state.customers?.length, state.cache.customers]);
 
   // Fetch transactions
   const fetchTransactions = useCallback(async (options: { limit?: number; offset?: number; forceRefresh?: boolean } = {}) => {
     const { limit = 1000, offset = 0, forceRefresh = false } = options;
     
     // Check cache first
-    if (!forceRefresh && state.transactions.length > 0 && isCacheValid(state.cache.transactions, 'transactions')) {
+    if (!forceRefresh && state.transactions && state.transactions.length > 0 && isCacheValid(state.cache.transactions, 'transactions')) {
       return;
     }
 
@@ -283,16 +287,19 @@ export function DataProvider({ children }: DataProviderProps) {
 
     try {
       const params = new URLSearchParams();
-      params.append('include', 'transactions');
-      params.append('transactionLimit', limit.toString());
-      params.append('transactionOffset', offset.toString());
+      params.append('limit', limit.toString());
+      params.append('offset', offset.toString());
       if (forceRefresh) params.append('refresh', 'true');
 
-      const response = await fetch(`/api/dashboard?${params.toString()}`);
+      const response = await fetch(`/api/transactions?${params.toString()}`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
       const result = await response.json();
-      dispatch({ type: 'SET_TRANSACTIONS', payload: result.transactions });
+      if (result.success) {
+        dispatch({ type: 'SET_TRANSACTIONS', payload: result.data });
+      } else {
+        throw new Error(result.error || 'Failed to fetch transactions');
+      }
     } catch (error) {
       dispatch({ 
         type: 'SET_ERROR', 
@@ -301,14 +308,14 @@ export function DataProvider({ children }: DataProviderProps) {
     } finally {
       dispatch({ type: 'SET_LOADING', payload: { key: 'transactions', value: false } });
     }
-  }, [state.transactions.length, state.cache.transactions]);
+  }, [state.transactions?.length, state.cache.transactions]);
 
   // Fetch card details
   const fetchCardDetails = useCallback(async (options: { forceRefresh?: boolean } = {}) => {
     const { forceRefresh = false } = options;
     
     // Check cache first
-    if (!forceRefresh && state.cardDetails.length > 0 && isCacheValid(state.cache.cardDetails, 'other')) {
+    if (!forceRefresh && state.cardDetails && state.cardDetails.length > 0 && isCacheValid(state.cache.cardDetails, 'other')) {
       return;
     }
 
@@ -317,14 +324,17 @@ export function DataProvider({ children }: DataProviderProps) {
 
     try {
       const params = new URLSearchParams();
-      params.append('include', 'cardDetails');
       if (forceRefresh) params.append('refresh', 'true');
 
-      const response = await fetch(`/api/dashboard?${params.toString()}`);
+      const response = await fetch(`/api/cards?${params.toString()}`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
       const result = await response.json();
-      dispatch({ type: 'SET_CARD_DETAILS', payload: result.cardDetails });
+      if (result.success) {
+        dispatch({ type: 'SET_CARD_DETAILS', payload: result.data });
+      } else {
+        throw new Error(result.error || 'Failed to fetch card details');
+      }
     } catch (error) {
       dispatch({ 
         type: 'SET_ERROR', 
@@ -333,11 +343,11 @@ export function DataProvider({ children }: DataProviderProps) {
     } finally {
       dispatch({ type: 'SET_LOADING', payload: { key: 'cardDetails', value: false } });
     }
-  }, [state.cardDetails.length, state.cache.cardDetails]);
+  }, [state.cardDetails?.length, state.cache.cardDetails]);
 
   // Fetch dashboard data
-  const fetchDashboard = useCallback(async (options: { include?: string; period?: string; forceRefresh?: boolean } = {}) => {
-    const { include = 'stats', period = 'monthly', forceRefresh = false } = options;
+  const fetchDashboard = useCallback(async (options: { period?: string; forceRefresh?: boolean } = {}) => {
+    const { period = 'monthly', forceRefresh = false } = options;
     
     // Check cache first
     if (!forceRefresh && state.dashboard && isCacheValid(state.cache.dashboard, 'other')) {
@@ -349,7 +359,6 @@ export function DataProvider({ children }: DataProviderProps) {
 
     try {
       const params = new URLSearchParams();
-      params.append('include', include);
       params.append('period', period);
       if (forceRefresh) params.append('refresh', 'true');
 
@@ -357,7 +366,31 @@ export function DataProvider({ children }: DataProviderProps) {
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
       const result = await response.json();
-      dispatch({ type: 'SET_DASHBOARD', payload: result });
+      if (result.success) {
+        // Transform the new dashboard format to match the expected format
+        const transformedDashboard = {
+          stats: {
+            customers: result.data.totalCustomers,
+            cards: result.data.totalCards,
+            transactions: result.data.totalTransactions,
+            pending: result.data.totalPendingAmount,
+            revenue: result.data.monthlyStats.totalProfit
+          },
+          recent: result.data.recentTransactions,
+          cardPendingAmounts: {
+            total_pending: result.data.totalPendingAmount,
+            total_received: 0, // Not available in new API
+            updated_cards: 0 // Not available in new API
+          },
+          upcomingDueDates: result.data.upcomingDueDates,
+          cardDetails: [], // Will be fetched separately
+          customers: [], // Will be fetched separately
+          transactions: [] // Will be fetched separately
+        };
+        dispatch({ type: 'SET_DASHBOARD', payload: transformedDashboard });
+      } else {
+        throw new Error(result.error || 'Failed to fetch dashboard data');
+      }
     } catch (error) {
       dispatch({ 
         type: 'SET_ERROR', 
@@ -376,7 +409,7 @@ export function DataProvider({ children }: DataProviderProps) {
 
   // Initial data fetch
   useEffect(() => {
-    fetchDashboard({ include: 'stats' });
+    fetchDashboard();
   }, []);
 
   const value: DataContextType = {

@@ -27,10 +27,19 @@ export default function CustomerViewModal({
   const [selectedCard, setSelectedCard] = useState<any | null>(null);
 
   useEffect(() => {
+    console.log('CustomerViewModal: open =', open, 'customer =', customer);
     if (open && customer) {
       loadCustomerData();
     }
-  }, [open, customer]);
+  }, [open, customer, customer?.id]);
+
+  useEffect(() => {
+    console.log('CustomerViewModal: taxDetails state changed =', taxDetails);
+  }, [taxDetails]);
+
+  useEffect(() => {
+    console.log('CustomerViewModal: identityDocuments state changed =', identityDocuments);
+  }, [identityDocuments]);
 
   const loadCustomerData = async () => {
     if (!customer?.id) return;
@@ -38,7 +47,7 @@ export default function CustomerViewModal({
     setLoading(true);
     try {
       // Use the new consolidated API with relations
-      const customerRes = await fetch(`/api/customers?include=relations&id=${customer.id}`);
+      const customerRes = await fetch(`/api/customers?id=${customer.id}&include=cards,transactions,accounts,tax_details,identity_documents`);
       
       if (!customerRes.ok) {
         throw new Error(`Failed to fetch customer data: ${customerRes.status}`);
@@ -51,6 +60,10 @@ export default function CustomerViewModal({
         throw new Error('Customer not found');
       }
 
+      console.log('Customer data loaded:', customerWithRelations);
+      console.log('Tax details:', customerWithRelations.tax_details);
+      console.log('Identity documents:', customerWithRelations.identity_documents);
+      
       setCustomerData(customerWithRelations);
       setTaxDetails(customerWithRelations.tax_details || []);
       setIdentityDocuments(customerWithRelations.identity_documents || []);

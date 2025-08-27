@@ -70,7 +70,7 @@ export default function PaymentModal({
     setError("");
 
     try {
-      const response = await fetch('/api/pay-pending', {
+      const response = await fetch('/api/payments', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

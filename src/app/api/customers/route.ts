@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/postgres';
-import { schemas } from '@/lib/tableSchemas';
-import { apiCache } from '@/lib/cache';
 
 export const runtime = 'nodejs';
 
@@ -14,40 +12,27 @@ interface CustomerWithRelations {
   aadhaar_no: string;
   created_at: string;
   updated_at: string;
-  // Relational data (when include=relations)
-  tax_details?: any[];
-  identity_documents?: any[];
-  accounts?: any[];
+  card_due_date?: string;
+  // Relational data (when include=cards)
   cards?: any[];
+  // Relational data (when include=transactions)
   transactions?: any[];
-  card_pending_amounts?: any[];
+  // Relational data (when include=accounts)
+  accounts?: any[];
+  // Relational data (when include=tax_details)
+  tax_details?: any[];
+  // Relational data (when include=identity_documents)
+  identity_documents?: any[];
 }
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const include = searchParams.get('include');
+    const include = searchParams.get('include') || '';
     const customerId = searchParams.get('id');
-    const customerIds = searchParams.get('ids'); // New: batch fetching
-    const limit = searchParams.get('limit') || '1000';
-    const offset = searchParams.get('offset') || '0';
+    const limit = parseInt(searchParams.get('limit') || '1000');
+    const offset = parseInt(searchParams.get('offset') || '0');
     const search = searchParams.get('search');
-    const forceRefresh = searchParams.get('refresh') === 'true';
-
-    // Create cache key
-    const cacheKey = `customers-${include || 'basic'}-${customerId || customerIds || 'all'}-${limit}-${offset}-${search || ''}`;
-    
-    // Check cache first (unless force refresh)
-    if (!forceRefresh) {
-      const cachedData = apiCache.get<CustomerWithRelations[]>(cacheKey);
-      if (cachedData) {
-        return NextResponse.json({
-          data: cachedData,
-          cached: true,
-          timestamp: Date.now()
-        });
-      }
-    }
 
     // Build base query
     let baseQuery = `
@@ -67,15 +52,6 @@ export async function GET(request: NextRequest) {
       whereConditions.push(`c.id = $${paramIndex}`);
       queryParams.push(Number(customerId));
       paramIndex++;
-    } else if (customerIds) {
-      // Batch fetching by multiple IDs
-      const ids = customerIds.split(',').map(id => Number(id.trim())).filter(id => !isNaN(id));
-      if (ids.length > 0) {
-        const placeholders = ids.map((_, i) => `$${paramIndex + i}`).join(',');
-        whereConditions.push(`c.id = ANY($${paramIndex})`);
-        queryParams.push(ids);
-        paramIndex++;
-      }
     }
 
     if (search) {
@@ -95,138 +71,130 @@ export async function GET(request: NextRequest) {
     }
 
     baseQuery += ` ORDER BY c.id DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-    queryParams.push(Number(limit), Number(offset));
+    queryParams.push(limit, offset);
 
     // Execute base customer query
     const { rows: customers } = await query(baseQuery, queryParams);
 
-    // If include=relations is requested, fetch related data in parallel
-    if (include === 'relations' && customers.length > 0) {
+    // Include cards if requested
+    if (include.includes('cards') && customers.length > 0) {
       const customerIds = customers.map(c => c.id);
+      const { rows: cards } = await query(
+        'SELECT * FROM card_details WHERE customer_id = ANY($1) ORDER BY id DESC',
+        [customerIds]
+      );
       
-      // Execute all relational queries in parallel
-      const [
-        taxDetailsResult,
-        identityDocumentsResult,
-        accountsResult,
-        cardsResult,
-        transactionsResult,
-        cardPendingResult
-      ] = await Promise.all([
-        // Tax details
-        query(`
-          SELECT * FROM customer_tax_details 
-          WHERE customer_id = ANY($1)
-          ORDER BY id DESC
-        `, [customerIds]),
-        
-        // Identity documents
-        query(`
-          SELECT * FROM identity_documents 
-          WHERE customer_id = ANY($1)
-          ORDER BY id DESC
-        `, [customerIds]),
-        
-        // Customer accounts
-        query(`
-          SELECT * FROM accounts 
-          WHERE customer_id = ANY($1)
-          ORDER BY id DESC
-        `, [customerIds]),
-        
-        // Card details
-        query(`
-          SELECT * FROM card_details 
-          WHERE customer_id = ANY($1)
-          ORDER BY id DESC
-        `, [customerIds]),
-        
-        // Transactions
-        query(`
-          SELECT * FROM transactions 
-          WHERE customer_id = ANY($1)
-          ORDER BY transaction_date DESC
-        `, [customerIds]),
-        
-        // Card pending amounts
-        query(`
-          SELECT * FROM card_pending_amounts 
-          WHERE customer_id = ANY($1)
-          ORDER BY id DESC
-        `, [customerIds])
-      ]);
-
-      // Group related data by customer_id
-      const taxDetailsByCustomer = taxDetailsResult.rows.reduce((acc, item) => {
-        if (!acc[item.customer_id]) acc[item.customer_id] = [];
-        acc[item.customer_id].push(item);
-        return acc;
-      }, {} as Record<number, any[]>);
-
-      const identityDocsByCustomer = identityDocumentsResult.rows.reduce((acc, item) => {
-        if (!acc[item.customer_id]) acc[item.customer_id] = [];
-        acc[item.customer_id].push(item);
-        return acc;
-      }, {} as Record<number, any[]>);
-
-      const accountsByCustomer = accountsResult.rows.reduce((acc, item) => {
-        if (!acc[item.customer_id]) acc[item.customer_id] = [];
-        acc[item.customer_id].push(item);
-        return acc;
-      }, {} as Record<number, any[]>);
-
-      const cardsByCustomer = cardsResult.rows.reduce((acc, item) => {
-        if (!acc[item.customer_id]) acc[item.customer_id] = [];
-        acc[item.customer_id].push(item);
-        return acc;
-      }, {} as Record<number, any[]>);
-
-      const transactionsByCustomer = transactionsResult.rows.reduce((acc, item) => {
-        if (!acc[item.customer_id]) acc[item.customer_id] = [];
-        acc[item.customer_id].push(item);
-        return acc;
-      }, {} as Record<number, any[]>);
-
-      const cardPendingByCustomer = cardPendingResult.rows.reduce((acc, item) => {
-        if (!acc[item.customer_id]) acc[item.customer_id] = [];
-        acc[item.customer_id].push(item);
-        return acc;
-      }, {} as Record<number, any[]>);
-
-      // Attach related data to customers
-      const customersWithRelations = customers.map(customer => ({
-        ...customer,
-        tax_details: taxDetailsByCustomer[customer.id] || [],
-        identity_documents: identityDocsByCustomer[customer.id] || [],
-        accounts: accountsByCustomer[customer.id] || [],
-        cards: cardsByCustomer[customer.id] || [],
-        transactions: transactionsByCustomer[customer.id] || [],
-        card_pending_amounts: cardPendingByCustomer[customer.id] || []
-      }));
-
-      // Cache the result
-      apiCache.set(cacheKey, customersWithRelations, 5 * 60 * 1000); // 5 minutes
-
-      return NextResponse.json({
-        data: customersWithRelations,
-        cached: false,
-        timestamp: Date.now()
+      const cardsMap = new Map();
+      cards.forEach(card => {
+        if (!cardsMap.has(card.customer_id)) {
+          cardsMap.set(card.customer_id, []);
+        }
+        cardsMap.get(card.customer_id).push(card);
+      });
+      
+      customers.forEach(customer => {
+        customer.cards = cardsMap.get(customer.id) || [];
       });
     }
 
-    // Cache basic customer data
-    apiCache.set(cacheKey, customers, 10 * 60 * 1000); // 10 minutes
+    // Include transactions if requested
+    if (include.includes('transactions') && customers.length > 0) {
+      const customerIds = customers.map(c => c.id);
+      const { rows: transactions } = await query(
+        'SELECT * FROM transactions WHERE customer_id = ANY($1) ORDER BY created_at DESC LIMIT 50',
+        [customerIds]
+      );
+      
+      const transactionsMap = new Map();
+      transactions.forEach(transaction => {
+        if (!transactionsMap.has(transaction.customer_id)) {
+          transactionsMap.set(transaction.customer_id, []);
+        }
+        transactionsMap.get(transaction.customer_id).push(transaction);
+      });
+      
+      customers.forEach(customer => {
+        customer.transactions = transactionsMap.get(customer.id) || [];
+      });
+    }
+
+    // Include accounts if requested
+    if (include.includes('accounts') && customers.length > 0) {
+      const customerIds = customers.map(c => c.id);
+      const { rows: accounts } = await query(
+        'SELECT * FROM accounts WHERE customer_id = ANY($1) ORDER BY id DESC',
+        [customerIds]
+      );
+      
+      const accountsMap = new Map();
+      accounts.forEach(account => {
+        if (!accountsMap.has(account.customer_id)) {
+          accountsMap.set(account.customer_id, []);
+        }
+        accountsMap.get(account.customer_id).push(account);
+      });
+      
+      customers.forEach(customer => {
+        customer.accounts = accountsMap.get(customer.id) || [];
+      });
+    }
+
+    // Include tax details if requested
+    if (include.includes('tax_details') && customers.length > 0) {
+      const customerIds = customers.map(c => c.id);
+      const { rows: taxDetails } = await query(
+        'SELECT * FROM customer_tax_details WHERE customer_id = ANY($1) ORDER BY id DESC',
+        [customerIds]
+      );
+      
+      const taxDetailsMap = new Map();
+      taxDetails.forEach(taxDetail => {
+        if (!taxDetailsMap.has(taxDetail.customer_id)) {
+          taxDetailsMap.set(taxDetail.customer_id, []);
+        }
+        taxDetailsMap.get(taxDetail.customer_id).push(taxDetail);
+      });
+      
+      customers.forEach(customer => {
+        customer.tax_details = taxDetailsMap.get(customer.id) || [];
+      });
+    }
+
+    // Include identity documents if requested
+    if (include.includes('identity_documents') && customers.length > 0) {
+      const customerIds = customers.map(c => c.id);
+      const { rows: identityDocuments } = await query(
+        'SELECT * FROM identity_documents WHERE customer_id = ANY($1) ORDER BY id DESC',
+        [customerIds]
+      );
+      
+      const identityDocumentsMap = new Map();
+      identityDocuments.forEach(doc => {
+        if (!identityDocumentsMap.has(doc.customer_id)) {
+          identityDocumentsMap.set(doc.customer_id, []);
+        }
+        identityDocumentsMap.get(doc.customer_id).push(doc);
+      });
+      
+      customers.forEach(customer => {
+        customer.identity_documents = identityDocumentsMap.get(customer.id) || [];
+      });
+    }
 
     return NextResponse.json({
+      success: true,
       data: customers,
-      cached: false,
-      timestamp: Date.now()
+      count: customers.length,
+      timestamp: new Date().toISOString()
     });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('Customers API error:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch customers' }, 
+      { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Internal server error' 
+      },
       { status: 500 }
     );
   }
@@ -234,99 +202,64 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const schema = schemas.customers;
-    const allowedFields = new Set(schema.fields.map((f) => f.name));
-
-    // Parse request body
-    let body: any;
-    try {
-      body = await request.json();
-    } catch (error) {
-      return NextResponse.json({ error: "Invalid JSON in request body" }, { status: 400 });
-    }
-
-    // Filter valid fields
-    const entries = Object.entries(body).filter(([k]) => allowedFields.has(k));
-    if (entries.length === 0) {
-      return NextResponse.json({ error: "No valid fields provided" }, { status: 400 });
-    }
+    const body = await request.json();
+    const { full_name, email_id, contact_no, pan_no, aadhaar_no } = body;
 
     // Validate required fields
-    const requiredFields = schema.fields.filter(f => f.required);
-    const missingFields: string[] = [];
-    
-    for (const field of requiredFields) {
-      if (!body.hasOwnProperty(field.name) || 
-          body[field.name] === undefined || 
-          body[field.name] === null || 
-          body[field.name] === "") {
-        missingFields.push(field.label || field.name);
-      }
-    }
-    
-    if (missingFields.length > 0) {
-      return NextResponse.json({ 
-        error: `Required fields missing: ${missingFields.join(", ")}` 
-      }, { status: 400 });
+    if (!full_name || !email_id || !contact_no) {
+      return NextResponse.json(
+        { success: false, error: 'Missing required fields: full_name, email_id, contact_no' },
+        { status: 400 }
+      );
     }
 
-    // Build insert query
-    const columns = entries.map(([k]) => k);
-    const values = entries.map(([, v]) => v);
-    const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
-
-    const { rows } = await query(
-      `INSERT INTO customers (${columns.join(', ')}) VALUES (${placeholders}) RETURNING *`,
-      values
+    // Check if email already exists
+    const existingEmail = await query(
+      'SELECT id FROM customers WHERE email_id = $1',
+      [email_id]
     );
-
-    // Invalidate customer cache
-    const keysToDelete: string[] = [];
-    for (const [key] of apiCache['cache']) {
-      if (key.startsWith('customers-')) {
-        keysToDelete.push(key);
-      }
+    if (existingEmail.rows.length > 0) {
+      return NextResponse.json(
+        { success: false, error: 'Email already exists' },
+        { status: 400 }
+      );
     }
-    keysToDelete.forEach(key => apiCache.delete(key));
 
-    return NextResponse.json(rows[0]);
-  } catch (error: any) {
-    console.error('POST customer error:', error);
-    return NextResponse.json(
-      { error: error.message || 'Failed to create customer' }, 
-      { status: 500 }
+    // Check if contact number already exists
+    const existingContact = await query(
+      'SELECT id FROM customers WHERE contact_no = $1',
+      [contact_no]
     );
-  }
-}
-
-// POST method to invalidate cache
-export async function PATCH(request: NextRequest) {
-  try {
-    const { action } = await request.json();
-    
-    if (action === 'invalidate-cache') {
-      // Clear all customer-related cache
-      const keysToDelete: string[] = [];
-      for (const [key] of apiCache['cache']) {
-        if (key.startsWith('customers-')) {
-          keysToDelete.push(key);
-        }
-      }
-      keysToDelete.forEach(key => apiCache.delete(key));
-      
-      return NextResponse.json({ 
-        success: true, 
-        message: 'Customer cache invalidated',
-        cleared_keys: keysToDelete.length
-      });
+    if (existingContact.rows.length > 0) {
+      return NextResponse.json(
+        { success: false, error: 'Contact number already exists' },
+        { status: 400 }
+      );
     }
-    
-    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
-    
-  } catch (error: any) {
-    console.error('Customer cache invalidation error:', error);
+
+    // Insert new customer
+    const insertQuery = `
+      INSERT INTO customers (full_name, email_id, contact_no, pan_no, aadhaar_no)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *
+    `;
+    const { rows } = await query(insertQuery, [
+      full_name, email_id, contact_no, pan_no, aadhaar_no
+    ]);
+
+    return NextResponse.json({
+      success: true,
+      data: rows[0],
+      timestamp: new Date().toISOString()
+    }, { status: 201 });
+
+  } catch (error) {
+    console.error('Customers POST error:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to invalidate cache' }, 
+      { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Internal server error' 
+      },
       { status: 500 }
     );
   }

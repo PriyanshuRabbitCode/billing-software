@@ -74,9 +74,35 @@ export function useDashboard(options: UseDashboardOptions = {}): UseDashboardRes
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       
-      const result: DashboardData = await response.json();
-      setData(result);
-      setError(null);
+      const result = await response.json();
+      
+      if (result.success) {
+        // Transform the new API response to match the expected format
+        const transformedData: DashboardData = {
+          stats: {
+            customers: result.data.totalCustomers,
+            cards: result.data.totalCards,
+            transactions: result.data.totalTransactions,
+            pending: result.data.totalPendingAmount,
+            revenue: result.data.monthlyStats.totalProfit
+          },
+          recent: result.data.recentTransactions,
+          cardPendingAmounts: {
+            total_pending: result.data.totalPendingAmount,
+            total_received: 0, // Not available in new API
+            updated_cards: 0 // Not available in new API
+          },
+          upcomingDueDates: result.data.upcomingDueDates,
+          cardDetails: [], // Will be fetched separately if needed
+          customers: [], // Will be fetched separately if needed
+          cached: false,
+          timestamp: Date.now()
+        };
+        setData(transformedData);
+        setError(null);
+      } else {
+        throw new Error(result.error || 'Failed to fetch dashboard data');
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to fetch dashboard data');
       setData(null);
@@ -100,9 +126,35 @@ export function useDashboard(options: UseDashboardOptions = {}): UseDashboardRes
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       
-      const result: DashboardData = await response.json();
-      setData(result);
-      setError(null);
+      const result = await response.json();
+      
+      if (result.success) {
+        // Transform the new API response to match the expected format
+        const transformedData: DashboardData = {
+          stats: {
+            customers: result.data.totalCustomers,
+            cards: result.data.totalCards,
+            transactions: result.data.totalTransactions,
+            pending: result.data.totalPendingAmount,
+            revenue: result.data.monthlyStats.totalProfit
+          },
+          recent: result.data.recentTransactions,
+          cardPendingAmounts: {
+            total_pending: result.data.totalPendingAmount,
+            total_received: 0, // Not available in new API
+            updated_cards: 0 // Not available in new API
+          },
+          upcomingDueDates: result.data.upcomingDueDates,
+          cardDetails: [], // Will be fetched separately if needed
+          customers: [], // Will be fetched separately if needed
+          cached: false,
+          timestamp: Date.now()
+        };
+        setData(transformedData);
+        setError(null);
+      } else {
+        throw new Error(result.error || 'Failed to fetch dashboard data');
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to fetch dashboard data');
       setData(null);
@@ -112,18 +164,8 @@ export function useDashboard(options: UseDashboardOptions = {}): UseDashboardRes
   }, [buildUrl]);
 
   const invalidateCache = useCallback(async () => {
-    try {
-      await fetch('/api/dashboard', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'invalidate-cache' })
-      });
-      
-      // Refetch data after cache invalidation
-      await refetch();
-    } catch (err: any) {
-      console.error('Failed to invalidate cache:', err);
-    }
+    // Simply refetch data since we don't have caching in the new API
+    await refetch();
   }, [refetch]);
 
   useEffect(() => {
@@ -141,13 +183,6 @@ export function useDashboard(options: UseDashboardOptions = {}): UseDashboardRes
 
 // Helper function to invalidate dashboard cache when transactions are modified
 export async function invalidateDashboardCache(): Promise<void> {
-  try {
-    await fetch('/api/dashboard', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'invalidate-cache' })
-    });
-  } catch (error) {
-    console.error('Failed to invalidate dashboard cache:', error);
-  }
+  // No-op since we don't have caching in the new API
+  console.log('Cache invalidation not needed in new API structure');
 }

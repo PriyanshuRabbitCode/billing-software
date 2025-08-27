@@ -1,166 +1,261 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query, getPool } from '@/lib/postgres';
-import { schemas } from '@/lib/tableSchemas';
+import { query } from '@/lib/postgres';
 
-// TypeScript interfaces for better type safety
-interface RouteParams {
-  id: string;
-}
-
-interface RouteContext {
-  params: Promise<RouteParams>;
-}
-
-// Helper function for error responses
-function createErrorResponse(message: string, status: number = 500) {
-  return NextResponse.json(
-    { 
-      error: message,
-      timestamp: new Date().toISOString(),
-      status 
-    }, 
-    { status }
-  );
-}
-
-// Helper function for success responses
-function createSuccessResponse(data: any, status: number = 200) {
-  return NextResponse.json(data, { status });
-}
+export const runtime = 'nodejs';
 
 export async function GET(
-  _req: NextRequest,
-  context: RouteContext
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const params = await context.params;
-    const { id } = params;
+    const { id } = await params;
+    const { searchParams } = new URL(request.url);
+    const include = searchParams.get('include') || '';
 
-    // Validate and parse ID
-    const numericId = Number(id);
-    if (!Number.isFinite(numericId)) {
-      return createErrorResponse("Invalid id", 400);
+    const customerId = parseInt(id);
+    if (isNaN(customerId)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid customer ID' },
+        { status: 400 }
+      );
     }
 
-    // Execute query
-    const { rows } = await query(
-      'SELECT * FROM customers WHERE id = $1',
-      [numericId]
+    // Get customer details
+    const { rows: customers } = await query(
+      `SELECT c.*, 
+              (SELECT MIN(cd.due_date) 
+               FROM card_details cd 
+               WHERE cd.customer_id = c.id) as card_due_date
+       FROM customers c 
+       WHERE c.id = $1`,
+      [customerId]
     );
-    
-    if (rows.length === 0) {
-      return createErrorResponse('Customer not found', 404);
+
+    if (customers.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Customer not found' },
+        { status: 404 }
+      );
     }
 
-    return createSuccessResponse(rows[0]);
-  } catch (error: any) {
-    console.error('GET customer error:', error);
-    return createErrorResponse(error.message || 'Internal server error');
+    const customer = customers[0];
+
+    // Include cards if requested
+    if (include.includes('cards')) {
+      const { rows: cards } = await query(
+        'SELECT * FROM card_details WHERE customer_id = $1 ORDER BY id DESC',
+        [customerId]
+      );
+      customer.cards = cards;
+    }
+
+    // Include transactions if requested
+    if (include.includes('transactions')) {
+      const { rows: transactions } = await query(
+        'SELECT * FROM transactions WHERE customer_id = $1 ORDER BY created_at DESC LIMIT 50',
+        [customerId]
+      );
+      customer.transactions = transactions;
+    }
+
+    // Include accounts if requested
+    if (include.includes('accounts')) {
+      const { rows: accounts } = await query(
+        'SELECT * FROM accounts WHERE customer_id = $1 ORDER BY id DESC',
+        [customerId]
+      );
+      customer.accounts = accounts;
+    }
+
+    // Include tax details if requested
+    if (include.includes('tax_details')) {
+      const { rows: taxDetails } = await query(
+        'SELECT * FROM customer_tax_details WHERE customer_id = $1 ORDER BY id DESC',
+        [customerId]
+      );
+      customer.tax_details = taxDetails;
+    }
+
+    // Include identity documents if requested
+    if (include.includes('identity_documents')) {
+      const { rows: identityDocuments } = await query(
+        'SELECT * FROM identity_documents WHERE customer_id = $1 ORDER BY id DESC',
+        [customerId]
+      );
+      customer.identity_documents = identityDocuments;
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: customer,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Customer GET error:', error);
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Internal server error' 
+      },
+      { status: 500 }
+    );
   }
 }
 
 export async function PATCH(
-  req: NextRequest,
-  context: RouteContext
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const params = await context.params;
-    const { id } = params;
+    const { id } = await params;
+    const body = await request.json();
+    const customerId = parseInt(id);
 
-    // Validate and parse ID
-    const numericId = Number(id);
-    if (!Number.isFinite(numericId)) {
-      return createErrorResponse("Invalid id", 400);
+    if (isNaN(customerId)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid customer ID' },
+        { status: 400 }
+      );
     }
 
-    // Get schema for validation
-    const schema = schemas.customers;
-    const allowedFields = new Set(schema.fields.map((f) => f.name));
+    // Check if customer exists
+    const { rows: existingCustomers } = await query(
+      'SELECT * FROM customers WHERE id = $1',
+      [customerId]
+    );
 
-    // Parse request body
-    let body: any;
-    try {
-      body = await req.json();
-    } catch (error) {
-      return createErrorResponse("Invalid JSON in request body", 400);
+    if (existingCustomers.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Customer not found' },
+        { status: 404 }
+      );
     }
 
-    // Filter valid fields
-    const entries = Object.entries(body).filter(([k]) => allowedFields.has(k));
-    if (entries.length === 0) {
-      return createErrorResponse("No valid fields provided", 400);
-    }
-
-    // Validate required fields
-    const requiredFields = schema.fields.filter(f => f.required);
-    const missingFields: string[] = [];
-    
-    for (const field of requiredFields) {
-      if (body.hasOwnProperty(field.name)) {
-        const value = body[field.name];
-        if (value === undefined || value === null || value === "") {
-          missingFields.push(field.label || field.name);
-        }
+    // Validate email uniqueness if being updated
+    if (body.email_id && body.email_id !== existingCustomers[0].email_id) {
+      const { rows: duplicateEmail } = await query(
+        'SELECT id FROM customers WHERE email_id = $1 AND id != $2',
+        [body.email_id, customerId]
+      );
+      if (duplicateEmail.length > 0) {
+        return NextResponse.json(
+          { success: false, error: 'Email already exists' },
+          { status: 400 }
+        );
       }
     }
-    
-    if (missingFields.length > 0) {
-      return createErrorResponse(`Required fields missing: ${missingFields.join(", ")}`, 400);
+
+    // Validate contact number uniqueness if being updated
+    if (body.contact_no && body.contact_no !== existingCustomers[0].contact_no) {
+      const { rows: duplicateContact } = await query(
+        'SELECT id FROM customers WHERE contact_no = $1 AND id != $2',
+        [body.contact_no, customerId]
+      );
+      if (duplicateContact.length > 0) {
+        return NextResponse.json(
+          { success: false, error: 'Contact number already exists' },
+          { status: 400 }
+        );
+      }
     }
 
     // Build update query
-    const assignments = entries.map(([k], i) => `${k} = $${i + 1}`);
-    const values = entries.map(([, v]) => v);
-    values.push(numericId);
+    const allowedFields = ['full_name', 'email_id', 'contact_no', 'pan_no', 'aadhaar_no'];
+    const updates: string[] = [];
+    const values: unknown[] = [];
+    let paramIndex = 1;
 
-    // Execute update
-    const { rows } = await query(
-      `UPDATE customers SET ${assignments.join(", ")} WHERE id = $${values.length} RETURNING *`,
-      values
-    );
-    
-    if (rows.length === 0) {
-      return createErrorResponse('Customer not found', 404);
+    for (const [key, value] of Object.entries(body)) {
+      if (allowedFields.includes(key) && value !== undefined) {
+        updates.push(`${key} = $${paramIndex}`);
+        values.push(value);
+        paramIndex++;
+      }
     }
-    
-    return createSuccessResponse(rows[0]);
-  } catch (error: any) {
-    console.error('PATCH customer error:', error);
-    return createErrorResponse(error.message || 'Internal server error');
+
+    if (updates.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'No valid fields to update' },
+        { status: 400 }
+      );
+    }
+
+    // Add customer ID to values
+    values.push(customerId);
+
+    const updateQuery = `
+      UPDATE customers 
+      SET ${updates.join(', ')}, updated_at = NOW()
+      WHERE id = $${paramIndex}
+      RETURNING *
+    `;
+
+    const { rows } = await query(updateQuery, values);
+
+    return NextResponse.json({
+      success: true,
+      data: rows[0],
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Customer PATCH error:', error);
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Internal server error' 
+      },
+      { status: 500 }
+    );
   }
 }
 
 export async function DELETE(
-  _req: NextRequest,
-  context: RouteContext
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const params = await context.params;
-    const { id } = params;
+    const { id } = await params;
+    const customerId = parseInt(id);
 
-    // Validate and parse ID
-    const numericId = Number(id);
-    if (!Number.isFinite(numericId)) {
-      return createErrorResponse("Invalid id", 400);
+    if (isNaN(customerId)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid customer ID' },
+        { status: 400 }
+      );
     }
 
-    // Check if customer exists before deleting
-    const checkResult = await query('SELECT COUNT(*) as count FROM customers WHERE id = $1', [numericId]);
-    if (checkResult.rows[0]?.count === 0) {
-      return createErrorResponse('Customer not found', 404);
+    // Check if customer exists
+    const { rows: existingCustomers } = await query(
+      'SELECT * FROM customers WHERE id = $1',
+      [customerId]
+    );
+
+    if (existingCustomers.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Customer not found' },
+        { status: 404 }
+      );
     }
 
-    // Delete the customer using direct pool connection for better control
-    const client = await getPool().connect();
-    try {
-      await client.query('DELETE FROM customers WHERE id = $1', [numericId]);
-    } finally {
-      client.release();
-    }
+    // Delete the customer (this will cascade to related records)
+    await query('DELETE FROM customers WHERE id = $1', [customerId]);
 
-    return createSuccessResponse({ ok: true });
-  } catch (error: any) {
-    console.error('DELETE customer error:', error);
-    return createErrorResponse(error.message || 'Internal server error');
+    return NextResponse.json({
+      success: true,
+      message: 'Customer deleted successfully',
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Customer DELETE error:', error);
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Internal server error' 
+      },
+      { status: 500 }
+    );
   }
 }

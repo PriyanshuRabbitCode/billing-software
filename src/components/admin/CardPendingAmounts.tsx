@@ -35,19 +35,29 @@ export default function CardPendingAmounts({ selectedCustomerId }: CardPendingAm
     setError("");
 
     try {
-      let url = '/api/card-pending-amounts';
+      let url = '/api/cards?include=pending';
       if (selectedCustomerId) {
-        url += `?customer_id=${selectedCustomerId}`;
+        url += `&customer_id=${selectedCustomerId}`;
       }
 
       const response = await fetch(url);
-      const data = await response.json();
+      const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to load card pending amounts');
+        throw new Error(result.error || 'Failed to load card pending amounts');
       }
 
-      setCardPendingData(data);
+      // Transform the data to match the expected format
+      const transformedData = result.data.map((card: any) => ({
+        cardNumber: card.card_number,
+        cardName: card.card_name,
+        customerName: card.customer?.full_name || 'Unknown',
+        pendingAmount: card.pending_amount || 0,
+        totalDeposits: card.total_deposits || 0,
+        totalWithdrawals: card.total_withdrawals || 0
+      }));
+
+      setCardPendingData(transformedData);
     } catch (err: any) {
 
       setError(err.message || 'Failed to load card pending amounts');

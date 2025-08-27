@@ -230,6 +230,7 @@ export default function CustomersPage() {
       {/* Customer View Modal */}
       {viewing && (
         <CustomerViewModal 
+          key={viewing.id} // Force re-render when customer changes
           open={!!viewing}
           customer={viewing} 
           onClose={() => setViewing(null)} 
