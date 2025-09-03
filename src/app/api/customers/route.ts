@@ -192,7 +192,7 @@ export async function GET(request: NextRequest) {
           TRIM(t.card_number) as card_number,
           MAX(t.card_name) as card_name,
           COALESCE(SUM(t.deposit_amount), 0) as received_amount,
-          COALESCE(SUM(t.pending_amount), 0) as pending_amount
+          GREATEST(COALESCE(SUM(t.pending_amount), 0), 0) as pending_amount
         FROM transactions t
         WHERE t.customer_id = ANY($1) 
           AND t.card_number IS NOT NULL 

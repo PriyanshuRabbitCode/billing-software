@@ -109,6 +109,42 @@ export async function POST(request: NextRequest) {
 
     // Calculate new pending amount
     const newPendingAmount = currentPending - amount;
+    
+    // If pending amount becomes 0 or less, automatically move the original pending amount to received amount
+    if (newPendingAmount <= 0) {
+      try {
+        // Get the original pending amount that was just paid off
+        const originalPendingAmount = currentPending;
+        
+        // Find the main transaction (the one with positive pending amount) for this card
+        const { rows: mainTransactionRows } = await query(
+          `SELECT id, pending_amount, deposit_amount, withdraw_amount 
+           FROM transactions 
+           WHERE card_number = $1 AND pending_amount > 0 
+           ORDER BY created_at ASC 
+           LIMIT 1`,
+          [cardNumber]
+        );
+        
+        if (mainTransactionRows.length > 0) {
+          const mainTransaction = mainTransactionRows[0];
+          
+          // Update the main transaction to move pending amount to received amount
+          await query(
+            `UPDATE transactions 
+             SET pending_amount = 0,
+                 deposit_amount = deposit_amount + $1
+             WHERE id = $2`,
+            [originalPendingAmount, mainTransaction.id]
+          );
+          
+          console.log(`Moved pending amount ${originalPendingAmount} to received amount for transaction ${mainTransaction.id}`);
+        }
+      } catch (updateError) {
+        console.error('Error updating received amount after pending amount paid:', updateError);
+        // Don't fail the payment if this update fails
+      }
+    }
 
     return NextResponse.json({
       success: true,
@@ -116,7 +152,8 @@ export async function POST(request: NextRequest) {
         transaction: rows[0],
         newPendingAmount: Math.max(0, newPendingAmount),
         paymentAmount: amount,
-        paymentMode
+        paymentMode,
+        pendingAmountMovedToReceived: newPendingAmount <= 0 ? currentPending : 0
       },
       timestamp: new Date().toISOString()
     }, { status: 201 });
