@@ -223,12 +223,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Calculate tax amount, MDR charge amount, and profit amount if not provided
+    let finalTaxAmount = tax_amount;
+    let finalMdrChargeAmount = mdr_charge_amount;
+    let finalProfitAmount = profit_amount;
+
+    if (withdraw > 0 && pos_type && tax_rate && mdr_amount) {
+      // Calculate Tax Amount: (Tax Rate % × Withdraw Amount) / 100
+      if (!finalTaxAmount) {
+        finalTaxAmount = (parseFloat(tax_rate) * withdraw) / 100;
+      }
+      
+      // Calculate MDR Charge Amount: (MDR % × Withdraw Amount) / 100
+      if (!finalMdrChargeAmount) {
+        finalMdrChargeAmount = (parseFloat(mdr_amount) * withdraw) / 100;
+      }
+      
+      // Calculate Profit Amount: Tax Amount - MDR Charge Amount
+      if (!finalProfitAmount) {
+        finalProfitAmount = finalTaxAmount - finalMdrChargeAmount;
+      }
+    }
+
     // Calculate pending amount and status if not provided
     let finalPendingAmount = pending_amount;
     let finalStatus = status;
 
     if (finalPendingAmount === undefined || finalStatus === undefined) {
-      const taxAmount = parseFloat(tax_amount || 0);
+      const taxAmount = parseFloat(finalTaxAmount || 0);
       const addTax = add_tax_to_withdraw || false;
       
       let pending = 0;
@@ -267,8 +289,8 @@ export async function POST(request: NextRequest) {
     
     const { rows } = await query(insertQuery, [
       customer_id, card_number, card_name, deposit_amount, withdraw_amount,
-      payable_amount, add_tax_to_withdraw, pos_type, tax_rate, tax_amount,
-      mdr_amount, mdr_charge_amount, profit_amount, finalPendingAmount, finalStatus
+      payable_amount, add_tax_to_withdraw, pos_type, tax_rate, finalTaxAmount,
+      mdr_amount, finalMdrChargeAmount, finalProfitAmount, finalPendingAmount, finalStatus
     ]);
 
     return NextResponse.json({

@@ -190,7 +190,7 @@ export const schemas: Record<string, TableSchema> = {
       { name: "pos_type", label: "POS Type", type: "enum", enumValues: ["MP", "PH", "MOS"] },
       { name: "tax_rate", label: "Tax Rate (%)", type: "number" },
       { name: "tax_amount", label: "Tax Amount", type: "number" },
-      { name: "mdr_amount", label: "MDR Amount", type: "number" },
+              { name: "mdr_amount", label: "MDR %", type: "number" },
       { name: "mdr_charge_amount", label: "MDR Charge Amount", type: "number" },
       { name: "profit_amount", label: "Profit Amount", type: "number" },
       

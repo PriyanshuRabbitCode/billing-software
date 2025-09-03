@@ -207,6 +207,29 @@ export default function TransactionFormModal({
     }
   }, [values.withdraw_amount, values.tax_amount, values.add_tax_to_withdraw]);
 
+  // Calculate Tax Amount and MDR Charge Amount based on Tax Rate %, MDR %, and Withdraw Amount
+  useEffect(() => {
+    const withdrawAmount = Number(values.withdraw_amount) || 0;
+    const taxRate = Number(values.tax_rate) || 0;
+    const mdrRate = Number(values.mdr_amount) || 0;
+    
+    // Calculate Tax Amount: (Tax Rate % × Withdraw Amount) / 100
+    const taxAmount = (taxRate * withdrawAmount) / 100;
+    
+    // Calculate MDR Charge Amount: (MDR % × Withdraw Amount) / 100
+    const mdrChargeAmount = (mdrRate * withdrawAmount) / 100;
+    
+    // Calculate Profit Amount: Tax Amount - MDR Charge Amount
+    const profitAmount = taxAmount - mdrChargeAmount;
+    
+    setValues(prev => ({
+      ...prev,
+      tax_amount: taxAmount > 0 ? taxAmount.toFixed(2) : "",
+      mdr_charge_amount: mdrChargeAmount > 0 ? mdrChargeAmount.toFixed(2) : "",
+      profit_amount: profitAmount > 0 ? profitAmount.toFixed(2) : ""
+    }));
+  }, [values.withdraw_amount, values.tax_rate, values.mdr_amount]);
+
   // Calculate pending amount
   useEffect(() => {
     const deposit = Number(values.deposit_amount) || 0;
@@ -508,18 +531,26 @@ export default function TransactionFormModal({
                   value={values.tax_amount}
                   className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
                   readOnly
+                  placeholder="Auto-calculated based on Tax Rate % and Withdraw Amount"
                 />
               </div>
 
-              {/* MDR Amount Field */}
+              {/* MDR % Field */}
               <div className="mb-4">
-                <label className="block text-xs text-gray-400 mb-1">MDR Amount</label>
-                <input
-                  type="number"
+                <label className="block text-xs text-gray-400 mb-1">MDR %</label>
+                <select
                   value={values.mdr_amount}
+                  onChange={(e) => handleChange('mdr_amount', e.target.value)}
                   className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-                  readOnly
-                />
+                  disabled={!values.pos_type}
+                >
+                  <option value="">Select MDR %...</option>
+                  {values.pos_type && TAX_MDR_RATES[values.pos_type as keyof typeof TAX_MDR_RATES]?.map((rate, index) => (
+                    <option key={index} value={rate.mdr}>
+                      {rate.mdr}%
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* MDR Charge Amount Field */}
@@ -530,6 +561,7 @@ export default function TransactionFormModal({
                   value={values.mdr_charge_amount}
                   className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
                   readOnly
+                  placeholder="Auto-calculated based on MDR % and Withdraw Amount"
                 />
               </div>
 
@@ -541,6 +573,7 @@ export default function TransactionFormModal({
                   value={values.profit_amount}
                   className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
                   readOnly
+                  placeholder="Auto-calculated: Tax Amount - MDR Charge Amount"
                 />
               </div>
             </div>
