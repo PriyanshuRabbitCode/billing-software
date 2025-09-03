@@ -70,7 +70,7 @@ export const schemas: Record<string, TableSchema> = {
     ],
   },
   card_details: {
-    table: "card_details",
+    table: "cards",
     title: "Card Details",
     fields: [
       { name: "customer_id", label: "Customer", type: "select", required: true, relation: { table: "customers", valueField: "id", labelField: "full_name" } },

@@ -112,21 +112,10 @@ export async function PATCH(
       );
     }
 
-    // Validate card number uniqueness if being updated
-    if (body.card_number && body.card_number !== existingCards[0].card_number) {
-      const { rows: duplicateCards } = await query(
-        'SELECT id FROM card_details WHERE card_number = $1 AND id != $2',
-        [body.card_number, cardId]
-      );
-      if (duplicateCards.length > 0) {
-        return NextResponse.json(
-          { success: false, error: 'Card number already exists' },
-          { status: 400 }
-        );
-      }
-    }
+    // No need to validate card number during updates - it was already validated during creation
+    // Card number uniqueness is enforced at the database level with UNIQUE constraint
 
-    // Build update query
+    // Build update query - only update fields that have actually changed
     const allowedFields = ['bank_name', 'card_type', 'card_name', 'card_number', 'due_date'];
     const updates: string[] = [];
     const values: unknown[] = [];
@@ -134,15 +123,25 @@ export async function PATCH(
 
     for (const [key, value] of Object.entries(body)) {
       if (allowedFields.includes(key) && value !== undefined) {
-        updates.push(`${key} = $${paramIndex}`);
-        values.push(value);
-        paramIndex++;
+        let processedValue = value;
+        
+        // Clean card number by removing spaces if it's being updated
+        if (key === 'card_number' && value !== existingCards[0][key]) {
+          processedValue = value.replace(/\s/g, '');
+        }
+        
+        // Only update if the value has actually changed
+        if (processedValue !== existingCards[0][key]) {
+          updates.push(`${key} = $${paramIndex}`);
+          values.push(processedValue);
+          paramIndex++;
+        }
       }
     }
 
     if (updates.length === 0) {
       return NextResponse.json(
-        { success: false, error: 'No valid fields to update' },
+        { success: false, error: 'No changes detected. All values are the same as current values.' },
         { status: 400 }
       );
     }
@@ -152,7 +151,7 @@ export async function PATCH(
 
     const updateQuery = `
       UPDATE card_details 
-      SET ${updates.join(', ')}, updated_at = NOW()
+      SET ${updates.join(', ')}
       WHERE id = $${paramIndex}
       RETURNING *
     `;
@@ -203,6 +202,26 @@ export async function DELETE(
         { success: false, error: 'Card not found' },
         { status: 404 }
       );
+    }
+
+    const card = existingCards[0];
+
+    // Check if there are transactions using this card number
+    if (card.card_number) {
+      const { rows: relatedTransactions } = await query(
+        'SELECT COUNT(*) as count FROM transactions WHERE card_number = $1',
+        [card.card_number]
+      );
+      
+      if (relatedTransactions[0].count > 0) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: `Cannot delete card. There are ${relatedTransactions[0].count} transaction(s) associated with this card number. Please delete the transactions first or update them to use a different card number.` 
+          },
+          { status: 400 }
+        );
+      }
     }
 
     // Delete the card

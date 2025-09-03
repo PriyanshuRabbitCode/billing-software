@@ -131,12 +131,13 @@ export default function TransactionFormModal({
       }
       
       try {
-        const res = await fetch(`/api/customer-cards/${values.customer_id}`);
+        const res = await fetch(`/api/cards?customer_id=${values.customer_id}`);
         if (!res.ok) {
           throw new Error(`Failed to fetch cards: ${res.status}`);
         }
         
-        const customerCards = await res.json();
+        const result = await res.json();
+        const customerCards = result.data || [];
         const validCards = customerCards.filter((card: any) => card.card_number);
         setCardOptions(validCards);
         

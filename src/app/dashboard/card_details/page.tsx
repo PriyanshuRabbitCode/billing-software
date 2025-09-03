@@ -26,7 +26,7 @@ export default function CardDetailsPage() {
   // Transform card details to include customer names
   const rows = cardDetails.map((card: any) => ({
     ...card,
-    customer_name: card.customer_name || 'Unknown'
+    customer_name: card.customer?.full_name || 'Unknown'
   }));
 
   const onSubmit = async (values: Record<string, any>) => {
@@ -106,13 +106,27 @@ export default function CardDetailsPage() {
     if (!confirm("Delete this record?")) return;
     
     try {
+      console.log('Attempting to delete card with ID:', row.id);
       const res = await fetch(`/api/${schema.table}/${row.id}`, { method: 'DELETE' });
       
+      console.log('Delete response status:', res.status, res.statusText);
+      console.log('Delete response ok:', res.ok);
+      
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Delete failed');
+        let errorMessage = 'Delete failed';
+        try {
+          const errorData = await res.json();
+          console.log('Error response data:', errorData);
+          errorMessage = errorData.error || errorMessage;
+        } catch (parseError) {
+          console.log('Failed to parse error response:', parseError);
+          // If response is not JSON, use status text
+          errorMessage = res.statusText || `HTTP ${res.status}`;
+        }
+        throw new Error(errorMessage);
       }
       
+      console.log('Delete successful, refreshing data...');
       await fetchCardDetails({ forceRefresh: true });
     } catch (error) {
       console.error('Delete error:', error);

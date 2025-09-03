@@ -6,10 +6,12 @@ export const runtime = 'nodejs';
 interface CustomerWithRelations {
   id: number;
   full_name: string;
+  billing_address: string;
+  city: string;
+  state: string;
+  pin_code: string;
   email_id: string;
   contact_no: string;
-  pan_no: string;
-  aadhaar_no: string;
   created_at: string;
   updated_at: string;
   card_due_date?: string;
@@ -58,9 +60,7 @@ export async function GET(request: NextRequest) {
       whereConditions.push(`(
         c.full_name ILIKE $${paramIndex} OR 
         c.email_id ILIKE $${paramIndex} OR 
-        c.contact_no ILIKE $${paramIndex} OR
-        c.pan_no ILIKE $${paramIndex} OR
-        c.aadhaar_no ILIKE $${paramIndex}
+        c.contact_no ILIKE $${paramIndex}
       )`);
       queryParams.push(`%${search}%`);
       paramIndex++;
@@ -181,6 +181,46 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Include card pending amounts if requested
+    if (include.includes('card_pending_amounts') && customers.length > 0) {
+      const customerIds = customers.map(c => c.id);
+      
+      // Calculate card pending amounts dynamically from transactions
+      const { rows: cardPendingAmounts } = await query(`
+        SELECT 
+          t.customer_id,
+          TRIM(t.card_number) as card_number,
+          MAX(t.card_name) as card_name,
+          COALESCE(SUM(t.deposit_amount), 0) as received_amount,
+          COALESCE(SUM(t.pending_amount), 0) as pending_amount
+        FROM transactions t
+        WHERE t.customer_id = ANY($1) 
+          AND t.card_number IS NOT NULL 
+          AND TRIM(t.card_number) != ''
+        GROUP BY t.customer_id, TRIM(t.card_number)
+        HAVING COALESCE(SUM(t.pending_amount), 0) > 0 OR COALESCE(SUM(t.deposit_amount), 0) > 0
+        ORDER BY t.customer_id, TRIM(t.card_number)
+      `, [customerIds]);
+      
+      // Add customer names to the card pending amounts data
+      const customerNamesMap = new Map(customers.map(c => [c.id, c.full_name]));
+      cardPendingAmounts.forEach(cardPending => {
+        cardPending.customer_name = customerNamesMap.get(cardPending.customer_id);
+      });
+      
+      const cardPendingAmountsMap = new Map();
+      cardPendingAmounts.forEach(cardPending => {
+        if (!cardPendingAmountsMap.has(cardPending.customer_id)) {
+          cardPendingAmountsMap.set(cardPending.customer_id, []);
+        }
+        cardPendingAmountsMap.get(cardPending.customer_id).push(cardPending);
+      });
+      
+      customers.forEach(customer => {
+        customer.card_pending_amounts = cardPendingAmountsMap.get(customer.id) || [];
+      });
+    }
+
     return NextResponse.json({
       success: true,
       data: customers,
@@ -203,12 +243,12 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { full_name, email_id, contact_no, pan_no, aadhaar_no } = body;
+    const { full_name, email_id, contact_no, billing_address, city, state, pin_code, pan_no, aadhaar_no } = body;
 
     // Validate required fields
-    if (!full_name || !email_id || !contact_no) {
+    if (!full_name || !email_id || !contact_no || !billing_address || !city || !state || !pin_code) {
       return NextResponse.json(
-        { success: false, error: 'Missing required fields: full_name, email_id, contact_no' },
+        { success: false, error: 'Missing required fields: full_name, email_id, contact_no, billing_address, city, state, pin_code' },
         { status: 400 }
       );
     }
@@ -239,17 +279,36 @@ export async function POST(request: NextRequest) {
 
     // Insert new customer
     const insertQuery = `
-      INSERT INTO customers (full_name, email_id, contact_no, pan_no, aadhaar_no)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO customers (full_name, email_id, contact_no, billing_address, city, state, pin_code)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
     `;
     const { rows } = await query(insertQuery, [
-      full_name, email_id, contact_no, pan_no, aadhaar_no
+      full_name, email_id, contact_no, billing_address, city, state, pin_code
     ]);
+
+    const newCustomer = rows[0];
+
+    // Insert tax details if provided
+    if (pan_no || aadhaar_no) {
+      try {
+        // Clean Aadhaar number by removing spaces and non-digits
+        const cleanAadhaarNo = aadhaar_no ? aadhaar_no.replace(/\s/g, '').replace(/\D/g, '') : null;
+        
+        await query(
+          `INSERT INTO customer_tax_details (customer_id, pan_no, aadhaar_no)
+           VALUES ($1, $2, $3)`,
+          [newCustomer.id, pan_no || null, cleanAadhaarNo]
+        );
+      } catch (taxError) {
+        console.warn('Failed to insert tax details:', taxError);
+        // Don't fail the customer creation if tax details fail
+      }
+    }
 
     return NextResponse.json({
       success: true,
-      data: rows[0],
+      data: newCustomer,
       timestamp: new Date().toISOString()
     }, { status: 201 });
 

@@ -83,8 +83,9 @@ export default function CustomerTransactionsPage() {
       setTransactions(transactionsData);
 
       // Load customer cards
-      const cardsRes = await fetch(`/api/customer-cards/${customerId}`);
-      const cardsData = await cardsRes.json();
+      const cardsRes = await fetch(`/api/cards?customer_id=${customerId}`);
+      const cardsResult = await cardsRes.json();
+      const cardsData = cardsResult.data || [];
       setCards(cardsData);
 
     } catch (err: any) {

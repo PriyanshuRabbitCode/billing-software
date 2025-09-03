@@ -91,7 +91,8 @@ export default function CustomersPage() {
         await invalidateCache();
         await fetchCustomers({ forceRefresh: true });
         
-        return updatedData || { id };
+        // Return the actual customer data, not the wrapper response
+        return updatedData.data || updatedData || { id };
       } else {
         console.log('Creating new customer');
         const res = await fetch(`/api/customers`, { 
@@ -111,7 +112,8 @@ export default function CustomersPage() {
         await invalidateCache();
         await fetchCustomers({ forceRefresh: true });
         
-        return newData;
+        // Return the actual customer data, not the wrapper response
+        return newData.data || newData;
       }
     } catch (error) {
       console.error('Save error:', error);

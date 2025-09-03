@@ -5,10 +5,12 @@ interface PaymentModalProps {
   open: boolean;
   onClose: () => void;
   cardData: {
-    cardNumber: string;
-    cardName: string;
-    customerName: string;
-    pendingAmount: number;
+    card_number: string;
+    card_name: string;
+    customer_id: number;
+    customer_name: string;
+    pending_amount: number;
+    received_amount: number;
   };
   onPaymentSuccess: (cardNumber: string, newPendingAmount: number) => void;
 }
@@ -27,7 +29,7 @@ export default function PaymentModal({
   // Auto-fill pending amount when modal opens
   useEffect(() => {
     if (open && cardData) {
-      setPaidAmount(cardData.pendingAmount.toString());
+      setPaidAmount(cardData.pending_amount.toString());
     }
   }, [open, cardData]);
 
@@ -61,8 +63,8 @@ export default function PaymentModal({
     }
 
     const amount = parseFloat(paidAmount);
-    if (amount > cardData.pendingAmount) {
-      setError(`Amount cannot be greater than pending amount (${formatCurrency(cardData.pendingAmount)})`);
+    if (amount > cardData.pending_amount) {
+      setError(`Amount cannot be greater than pending amount (${formatCurrency(cardData.pending_amount)})`);
       return;
     }
 
@@ -76,7 +78,8 @@ export default function PaymentModal({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          cardNumber: cardData.cardNumber,
+          cardNumber: cardData.card_number,
+          customerId: cardData.customer_id,
           paymentMode,
           paidAmount: amount
         }),
@@ -89,7 +92,7 @@ export default function PaymentModal({
       }
 
       // Payment successful
-      onPaymentSuccess(cardData.cardNumber, result.data.newPendingAmount);
+      onPaymentSuccess(cardData.card_number, result.data.newPendingAmount);
       
       // Show success message
       alert(`Payment successful! ₹${amount} received via ${paymentMode}`);
@@ -141,20 +144,20 @@ export default function PaymentModal({
             <div className="space-y-2 text-sm">
               <div>
                 <span className="text-gray-400">Card Number:</span>
-                <span className="ml-2 text-white">{cardData.cardNumber}</span>
+                                  <span className="ml-2 text-white">{cardData.card_number}</span>
               </div>
               <div>
                 <span className="text-gray-400">Card Name:</span>
-                <span className="ml-2 text-white">{cardData.cardName}</span>
+                                  <span className="ml-2 text-white">{cardData.card_name}</span>
               </div>
-              <div>
-                <span className="text-gray-400">Customer:</span>
-                <span className="ml-2 text-white">{cardData.customerName}</span>
-              </div>
+                              <div>
+                  <span className="text-gray-400">Customer Name:</span>
+                  <span className="ml-2 text-white">{cardData.customer_name}</span>
+                </div>
               <div>
                 <span className="text-gray-400">Pending Amount:</span>
                 <span className="ml-2 text-yellow-400 font-medium">
-                  {formatCurrency(cardData.pendingAmount)}
+                  {formatCurrency(cardData.pending_amount)}
                 </span>
               </div>
             </div>
@@ -194,12 +197,12 @@ export default function PaymentModal({
               placeholder="0.00"
               step="0.01"
               min="0.01"
-              max={cardData.pendingAmount}
+                              max={cardData.pending_amount}
               disabled={loading}
               required
             />
             <div className="text-xs text-gray-500 mt-1">
-              Maximum: {formatCurrency(cardData.pendingAmount)}
+                              Maximum: {formatCurrency(cardData.pending_amount)}
             </div>
           </div>
 

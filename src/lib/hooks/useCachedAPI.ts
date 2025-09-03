@@ -106,7 +106,7 @@ export function useCardPendingAmountsTotal() {
 
 export function useCustomerCards(customerId: string) {
   return useCachedAPI(
-    `/api/customer-cards/${customerId}`,
+    `/api/cards?customer_id=${customerId}`,
     CACHE_KEYS.CUSTOMER_CARDS(customerId),
     { ttl: 5 * 60 * 1000 } // 5 minutes TTL
   );

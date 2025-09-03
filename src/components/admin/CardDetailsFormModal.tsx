@@ -26,6 +26,12 @@ export default function CardDetailsFormModal({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [options, setOptions] = useState<Record<string, Array<{ value: unknown; label: string }>>>({});
   const [availableCards, setAvailableCards] = useState<string[]>([]);
+  const [isFormActive, setIsFormActive] = useState(false);
+  
+  // Debug: Log whenever values change
+  useEffect(() => {
+    console.log('Form values changed:', values);
+  }, [values]);
   const [popup, setPopup] = useState<{
     open: boolean;
     title: string;
@@ -47,66 +53,136 @@ export default function CardDetailsFormModal({
 
   // Update available card names based on selected bank and type
   const updateAvailableCards = useCallback((bankName: string, cardType: string) => {
+    console.log('updateAvailableCards called with:', { bankName, cardType });
+    console.log('Form is active:', isFormActive);
+    
     if (!bankName || !cardType) {
+      console.log('Missing bank name or card type, clearing available cards');
       setAvailableCards([]);
       return;
     }
     
     const cardOptions = schema.fields.find(f => f.name === 'card_name')?.enumValues || [];
-    const filtered = cardOptions.filter(card => 
-      card.startsWith(bankName.split(' ')[0]) && // Match bank prefix
-      card.includes(cardType.split(' ')[0]) // Match card type (Credit/Debit)
-    );
+    console.log('Total card options available:', cardOptions.length);
+    
+    // More flexible filtering logic - be more inclusive to prevent valid cards from being filtered out
+    const filtered = cardOptions.filter(card => {
+      // Check if card type matches (Credit/Debit)
+      const typeMatch = card.toLowerCase().includes(cardType.toLowerCase());
+      
+      // If card type doesn't match, exclude it
+      if (!typeMatch) return false;
+      
+      // Special handling for common bank abbreviations and names
+      const bankAbbreviations: Record<string, string[]> = {
+        'State Bank of India': ['SBI', 'State', 'Bank'],
+        'HDFC Bank': ['HDFC', 'Bank'],
+        'ICICI Bank': ['ICICI', 'Bank'],
+        'Punjab National Bank': ['PNB', 'Punjab', 'National', 'Bank'],
+        'Bank of Baroda': ['BOB', 'Baroda', 'Bank'],
+        'Canara Bank': ['Canara', 'Bank'],
+        'Union Bank of India': ['Union', 'Bank'],
+        'Axis Bank': ['Axis', 'Bank'],
+        'Kotak Mahindra Bank': ['Kotak', 'Mahindra', 'Bank'],
+        'IndusInd Bank': ['IndusInd', 'Bank'],
+        'Yes Bank': ['Yes', 'Bank'],
+        'Federal Bank': ['Federal', 'Bank'],
+        'IDBI Bank': ['IDBI', 'Bank'],
+        'RBL Bank': ['RBL', 'Bank']
+      };
+      
+      const bankAbbrev = bankAbbreviations[bankName];
+      if (bankAbbrev) {
+        // Check if any bank abbreviation or word is in the card name
+        const hasAbbreviation = bankAbbrev.some(abbrev => 
+          card.toUpperCase().includes(abbrev.toUpperCase())
+        );
+        if (hasAbbreviation) return true;
+      }
+      
+      // Check if bank name has any common words with the card name
+      const bankWords = bankName.toLowerCase().split(' ').filter(word => word.length > 2);
+      const cardWords = card.toLowerCase().split(' ').filter(word => word.length > 2);
+      
+      // Check for common words between bank and card name
+      const hasCommonWords = bankWords.some(bankWord => 
+        cardWords.some(cardWord => 
+          cardWord.includes(bankWord) || bankWord.includes(cardWord)
+        )
+      );
+      
+      if (hasCommonWords) return true;
+      
+      // If no specific match found, be more permissive - include cards that might be valid
+      // This prevents over-filtering that could exclude legitimate card names
+      return true;
+    });
+    
+    console.log('Filtered cards:', filtered);
+    console.log('Filtered count:', filtered.length);
+    
+    // If we have a current card name selected and it's not in the filtered list,
+    // but the form is active (user is filling it out), don't clear the available cards
+    // This prevents the form from becoming unusable when the user has made selections
+    if (isFormActive && values.card_name && filtered.length === 0) {
+      console.log('Form is active and user has selected card name, keeping current available cards');
+      return;
+    }
     
     setAvailableCards(filtered);
     
-    // If current card name is not in filtered list, reset it
-    if (values.card_name && !filtered.includes(values.card_name as string)) {
-      setValues({...values, card_name: ""});
-    }
-  }, [schema.fields, values.card_name]);
+    // Don't reset card name automatically - let user make the choice
+    // This prevents the form from clearing valid selections
+  }, [schema.fields, isFormActive, values.card_name]);
 
   // Migration removed - no longer needed for form functionality
 
   // Initialize form values when the modal opens or when editing
   useEffect(() => {
-    const v: Record<string, string | number | boolean | null> = {};
-    fields.forEach((f) => {
-      const initialValue = initial?.[f.name];
-      if (initialValue !== undefined && initialValue !== null) {
-        // Handle date fields - convert ISO string to YYYY-MM-DD format for HTML date input
-        if (f.type === "datetime" && initialValue) {
-          try {
-            const date = new Date(initialValue as string);
-            if (!isNaN(date.getTime())) {
-              // Convert to local date in YYYY-MM-DD format for HTML date input
-              const year = date.getFullYear();
-              const month = String(date.getMonth() + 1).padStart(2, '0');
-              const day = String(date.getDate()).padStart(2, '0');
-              const formattedDate = `${year}-${month}-${day}`;
-              v[f.name] = formattedDate;
-            } else {
+    // Only initialize if we don't have values yet or if initial has changed
+    if (Object.keys(values).length === 0 || initial !== null) {
+      const v: Record<string, string | number | boolean | null> = {};
+      fields.forEach((f) => {
+        const initialValue = initial?.[f.name];
+        if (initialValue !== undefined && initialValue !== null) {
+          // Handle date fields - convert ISO string to YYYY-MM-DD format for HTML date input
+          if (f.type === "datetime" && initialValue) {
+            try {
+              const date = new Date(initialValue as string);
+              if (!isNaN(date.getTime())) {
+                // Convert to local date in YYYY-MM-DD format for HTML date input
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                const formattedDate = `${year}-${month}-${day}`;
+                v[f.name] = formattedDate;
+              } else {
+                v[f.name] = "";
+              }
+            } catch (error) {
+              console.error('Error parsing date:', error);
               v[f.name] = "";
             }
-          } catch (error) {
-            console.error('Error parsing date:', error);
-            v[f.name] = "";
+          } else {
+            v[f.name] = initialValue as string | number | boolean | null;
           }
         } else {
-          v[f.name] = initialValue as string | number | boolean | null;
+          v[f.name] = f.type === "boolean" ? false : "";
         }
-      } else {
-        v[f.name] = f.type === "boolean" ? false : "";
+      });
+      console.log('Setting form values:', v);
+      setValues(v);
+      
+      // Update available cards if bank and type are set
+      if (v.bank_name && v.card_type) {
+        console.log('Initializing with bank and type, updating available cards');
+        updateAvailableCards(v.bank_name as string, v.card_type as string);
       }
-    });
-    console.log('Setting form values:', v);
-    setValues(v);
-    
-    // Update available cards if bank and type are set
-    if (v.bank_name && v.card_type) {
-      updateAvailableCards(v.bank_name as string, v.card_type as string);
+      
+      // Reset form active state on initialization
+      setIsFormActive(false);
     }
-  }, [initial, open, fields, updateAvailableCards]);
+  }, [initial, fields, updateAvailableCards, values]); // Added values dependency to prevent unnecessary re-initialization
 
   // Load customer options for initial value display
   useEffect(() => {
@@ -137,14 +213,23 @@ export default function CardDetailsFormModal({
   // Handle field change
   const handleChange = (name: string, value: string | number | boolean | null) => {
     const newValues = { ...values, [name]: value };
+    console.log(`Field ${name} changed to:`, value);
+    console.log('New form values:', newValues);
+    
+    // Mark form as active when user starts interacting
+    if (!isFormActive) {
+      setIsFormActive(true);
+    }
+    
     setValues(newValues);
     
     // Update available cards when bank or type changes
     if (name === 'bank_name' || name === 'card_type') {
-              updateAvailableCards(
-          name === 'bank_name' ? value as string : values.bank_name as string,
-          name === 'card_type' ? value as string : values.card_type as string
-        );
+      console.log('Updating available cards for:', name, value);
+      updateAvailableCards(
+        name === 'bank_name' ? value as string : values.bank_name as string,
+        name === 'card_type' ? value as string : values.card_type as string
+      );
     }
   };
 
@@ -337,19 +422,26 @@ export default function CardDetailsFormModal({
               value={(values.card_name as string) ?? ""}
               onChange={(e) => handleChange('card_name', e.target.value)}
               className="bg-gray-800 border border-gray-700 rounded px-3 py-2"
-              disabled={availableCards.length === 0}
+              disabled={availableCards.length === 0 && !values.card_name}
             >
               <option value="">Select Card Name...</option>
+              {/* Show available cards first */}
               {availableCards.map((opt) => (
                 <option key={opt} value={opt}>
                   {opt}
                 </option>
               ))}
+              {/* If we have a selected card name that's not in available cards, show it anyway */}
+              {values.card_name && !availableCards.includes(values.card_name as string) && (
+                <option key={values.card_name} value={values.card_name}>
+                  {values.card_name} (Custom)
+                </option>
+              )}
             </select>
             {errors.card_name && (
               <span className="text-xs text-red-400">{errors.card_name}</span>
             )}
-            {availableCards.length === 0 && values.bank_name && values.card_type && (
+            {availableCards.length === 0 && values.bank_name && values.card_type && !values.card_name && (
               <span className="text-xs text-yellow-400">No cards available for selected bank and type</span>
             )}
           </div>

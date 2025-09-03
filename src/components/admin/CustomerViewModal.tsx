@@ -47,7 +47,7 @@ export default function CustomerViewModal({
     setLoading(true);
     try {
       // Use the new consolidated API with relations
-      const customerRes = await fetch(`/api/customers?id=${customer.id}&include=cards,transactions,accounts,tax_details,identity_documents`);
+      const customerRes = await fetch(`/api/customers?id=${customer.id}&include=cards,transactions,accounts,tax_details,identity_documents,card_pending_amounts`);
       
       if (!customerRes.ok) {
         throw new Error(`Failed to fetch customer data: ${customerRes.status}`);
@@ -63,14 +63,29 @@ export default function CustomerViewModal({
       console.log('Customer data loaded:', customerWithRelations);
       console.log('Tax details:', customerWithRelations.tax_details);
       console.log('Identity documents:', customerWithRelations.identity_documents);
+      console.log('Accounts:', customerWithRelations.accounts);
+      console.log('Cards:', customerWithRelations.cards);
+      console.log('Card Pending Amounts:', customerWithRelations.card_pending_amounts);
       
       setCustomerData(customerWithRelations);
-      setTaxDetails(customerWithRelations.tax_details || []);
-      setIdentityDocuments(customerWithRelations.identity_documents || []);
-      setAccounts(customerWithRelations.accounts || []);
-      setCards(customerWithRelations.cards || []);
-      setTransactions(customerWithRelations.transactions || []);
-      setCardPendingAmounts(customerWithRelations.card_pending_amounts || []);
+      
+      const taxData = customerWithRelations.tax_details || [];
+      const identityData = customerWithRelations.identity_documents || [];
+      const accountsData = customerWithRelations.accounts || [];
+      const cardsData = customerWithRelations.cards || [];
+      const transactionsData = customerWithRelations.transactions || [];
+      const cardPendingData = customerWithRelations.card_pending_amounts || [];
+      
+      console.log('Setting state - Tax details:', taxData);
+      console.log('Setting state - Identity documents:', identityData);
+      console.log('Setting state - Accounts:', accountsData);
+      
+      setTaxDetails(taxData);
+      setIdentityDocuments(identityData);
+      setAccounts(accountsData);
+      setCards(cardsData);
+      setTransactions(transactionsData);
+      setCardPendingAmounts(cardPendingData);
     } catch (error) {
       console.error('Error loading customer data:', error);
       // Fallback: use the original customer data
@@ -119,8 +134,8 @@ export default function CustomerViewModal({
     // Update the card data optimistically
     setCardPendingAmounts(prev => 
       prev.map(card => 
-        card.cardNumber === cardNumber 
-          ? { ...card, pendingAmount: newPendingAmount }
+        card.card_number === cardNumber 
+          ? { ...card, pending_amount: newPendingAmount }
           : card
       )
     );
@@ -312,19 +327,19 @@ export default function CustomerViewModal({
                           {cardPendingAmounts.map((cardPending, index) => (
                             <tr key={index} className="border-t border-gray-700">
                               <td className="px-4 py-2 font-mono">
-                                **** **** **** {getLastFourDigits(cardPending.cardNumber)}
+                                **** **** **** {getLastFourDigits(cardPending.card_number)}
                               </td>
-                              <td className="px-4 py-2">{cardPending.cardName || "—"}</td>
+                              <td className="px-4 py-2">{cardPending.card_name || "—"}</td>
                               <td className="px-4 py-2 font-semibold text-green-400">
-                                {formatCurrency(cardPending.receivedAmount || 0)}
+                                {formatCurrency(cardPending.received_amount || 0)}
                               </td>
                               <td className="px-4 py-2 font-semibold">
-                                <span className={Number(cardPending.pendingAmount) > 10000 ? 'text-red-400' : 'text-yellow-400'}>
-                                  {formatCurrency(cardPending.pendingAmount || 0)}
+                                <span className={Number(cardPending.pending_amount) > 10000 ? 'text-red-400' : 'text-yellow-400'}>
+                                  {formatCurrency(cardPending.pending_amount || 0)}
                                 </span>
                               </td>
                               <td className="px-4 py-2 text-center">
-                                {cardPending.pendingAmount > 0 ? (
+                                {cardPending.pending_amount > 0 ? (
                                   <button
                                     onClick={() => handlePayClick(cardPending)}
                                     className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
@@ -332,7 +347,7 @@ export default function CustomerViewModal({
                                     Pay
                                   </button>
                                 ) : (
-                                  <span className="text-green-400 text-xs">PAID</span>
+                                  <span className="text-green-400">PAID</span>
                                 )}
                               </td>
                             </tr>

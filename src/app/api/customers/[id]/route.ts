@@ -160,8 +160,8 @@ export async function PATCH(
       }
     }
 
-    // Build update query
-    const allowedFields = ['full_name', 'email_id', 'contact_no', 'pan_no', 'aadhaar_no'];
+    // Build update query for customer basic info
+    const allowedFields = ['full_name', 'email_id', 'contact_no', 'billing_address', 'city', 'state', 'pin_code'];
     const updates: string[] = [];
     const values: unknown[] = [];
     let paramIndex = 1;
@@ -192,6 +192,43 @@ export async function PATCH(
     `;
 
     const { rows } = await query(updateQuery, values);
+
+    // Handle tax details update if provided
+    if (body.pan_no !== undefined || body.aadhaar_no !== undefined) {
+      try {
+        // Check if tax details already exist
+        const { rows: existingTaxDetails } = await query(
+          'SELECT id FROM customer_tax_details WHERE customer_id = $1',
+          [customerId]
+        );
+
+        if (existingTaxDetails.length > 0) {
+          // Update existing tax details
+          const cleanAadhaarNo = body.aadhaar_no ? body.aadhaar_no.replace(/\s/g, '').replace(/\D/g, '') : null;
+          
+          await query(
+            `UPDATE customer_tax_details 
+             SET pan_no = COALESCE($1, pan_no), 
+                 aadhaar_no = COALESCE($2, aadhaar_no),
+                 updated_at = NOW()
+             WHERE customer_id = $3`,
+            [body.pan_no, cleanAadhaarNo, customerId]
+          );
+        } else {
+          // Insert new tax details
+          const cleanAadhaarNo = body.aadhaar_no ? body.aadhaar_no.replace(/\s/g, '').replace(/\D/g, '') : null;
+          
+          await query(
+            `INSERT INTO customer_tax_details (customer_id, pan_no, aadhaar_no)
+             VALUES ($1, $2, $3)`,
+            [customerId, body.pan_no || null, cleanAadhaarNo]
+          );
+        }
+      } catch (taxError) {
+        console.warn('Failed to update tax details:', taxError);
+        // Don't fail the customer update if tax details fail
+      }
+    }
 
     return NextResponse.json({
       success: true,

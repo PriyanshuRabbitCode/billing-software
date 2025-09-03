@@ -91,7 +91,8 @@ export default function CombinedCustomerForm({
       
       // Fetch tax details
       const taxRes = await fetch(`/api/${taxSchema.table}`);
-      const taxData = await taxRes.json();
+      const taxResult = await taxRes.json();
+      const taxData = taxResult.data || taxResult; // Handle both new API format and old format
       const customerTax = taxData.find((item: any) => item.customer_id === customerId);
       
       console.log('Found tax details:', customerTax);
@@ -115,7 +116,8 @@ export default function CombinedCustomerForm({
 
       // Fetch documents
       const docRes = await fetch(`/api/${docSchema.table}`);
-      const docData = await docRes.json();
+      const docResult = await docRes.json();
+      const docData = docResult.data || docResult; // Handle both new API format and old format
       const customerDoc = docData.find((item: any) => item.customer_id === customerId);
       
       console.log('Found document details:', customerDoc);
@@ -140,7 +142,8 @@ export default function CombinedCustomerForm({
       
       // Fetch account info
       const accountRes = await fetch(`/api/${accountSchema.table}`);
-      const accountData = await accountRes.json();
+      const accountResult = await accountRes.json();
+      const accountData = accountResult.data || accountResult; // Handle both new API format and old format
       const customerAccount = accountData.find((item: any) => item.customer_id === customerId);
       
       console.log('Found account details:', customerAccount);
@@ -174,7 +177,8 @@ export default function CombinedCustomerForm({
   const fetchPANNumber = async (customerId: string) => {
     try {
       const taxRes = await fetch(`/api/${taxSchema.table}`);
-      const taxData = await taxRes.json();
+      const taxResult = await taxRes.json();
+      const taxData = taxResult.data || taxResult; // Handle both new API format and old format
       const customerTax = taxData.find((item: any) => item.customer_id === customerId);
       return customerTax?.pan_no || "";
     } catch (err) {
@@ -500,9 +504,10 @@ export default function CombinedCustomerForm({
 
   // Validate Aadhaar number format
   const validateAadhaar = (aadhaar: string): boolean => {
-    // Aadhaar format: 12 digits
+    // Remove all spaces and non-digit characters, then check if it's 12 digits
+    const cleanAadhaar = aadhaar.replace(/\s/g, '').replace(/\D/g, '');
     const aadhaarRegex = /^\d{12}$/;
-    return aadhaarRegex.test(aadhaar);
+    return aadhaarRegex.test(cleanAadhaar);
   };
 
   // Handle file upload for identity documents
@@ -534,6 +539,22 @@ export default function CombinedCustomerForm({
 
     const data = await response.json();
     return data.path;
+  };
+
+  // Helper functions for input types
+  const getInputType = (field: CrudField) => {
+    if (field.type === "number") return "number";
+    if (field.type === "datetime") return "datetime-local";
+    if (field.name === "email_id") return "email";
+    if (field.name === "contact_no") return "tel";
+    return "text";
+  };
+
+  const getInputMode = (field: CrudField) => {
+    if (field.type === "number") return "numeric";
+    if (field.name === "contact_no" || field.name === "pin_code") return "numeric";
+    if (field.name === "email_id") return "email";
+    return "text";
   };
 
   // Submit all forms
@@ -588,9 +609,15 @@ export default function CombinedCustomerForm({
       // Check if tax details should be saved
       const hasTaxData = taxValues.pan_no || taxValues.aadhaar_no;
       if (hasTaxData) {
+        // Clean Aadhaar number by removing spaces and non-digits before saving
+        const cleanTaxValues = { ...taxValues };
+        if (cleanTaxValues.aadhaar_no) {
+          cleanTaxValues.aadhaar_no = cleanTaxValues.aadhaar_no.replace(/\s/g, '').replace(/\D/g, '');
+        }
+        
         // Set customer ID for tax details
         const taxDataToSave = {
-          ...taxValues,
+          ...cleanTaxValues,
           customer_id: customerId
         };
         
@@ -603,7 +630,8 @@ export default function CombinedCustomerForm({
           try {
             // Check for existing tax details
             const taxRes = await fetch(`/api/${taxSchema.table}`);
-            const allTaxDetails = await taxRes.json();
+            const taxResult = await taxRes.json();
+            const allTaxDetails = taxResult.data || taxResult; // Handle both new API format and old format
             const existing = allTaxDetails.find((detail: any) => detail.customer_id === customerId);
             
             if (existing) {
@@ -688,7 +716,8 @@ export default function CombinedCustomerForm({
           try {
             // Check for existing document details
             const docRes = await fetch(`/api/${docSchema.table}`);
-            const allDocDetails = await docRes.json();
+            const docResult = await docRes.json();
+            const allDocDetails = docResult.data || docResult; // Handle both new API format and old format
             const existing = allDocDetails.find((detail: any) => 
               detail.customer_id === customerId && detail.document_type === docValues.document_type
             );
@@ -776,7 +805,8 @@ export default function CombinedCustomerForm({
           try {
             // Check for existing account
             const accountRes = await fetch(`/api/${accountSchema.table}`);
-            const allAccounts = await accountRes.json();
+            const accountResult = await accountRes.json();
+            const allAccounts = accountResult.data || accountResult; // Handle both new API format and old format
             const existing = allAccounts.find((account: any) => account.customer_id === customerId);
             
             if (existing) {
@@ -898,7 +928,7 @@ export default function CombinedCustomerForm({
               />
             ) : (
               <input
-                type={field.type === "number" ? "number" : field.type === "datetime" ? "datetime-local" : "text"}
+                type={getInputType(field)}
                 value={values[field.name] ?? ""}
                 onChange={(e) => {
                   const newValues = { ...values, [field.name]: e.target.value };
@@ -917,9 +947,17 @@ export default function CombinedCustomerForm({
                     setAadhaarAutoFilled(true);
                     setPanAutoFilled(false);
                   }
+                  
+                  // Clean Aadhaar number by removing spaces and non-digits
+                  if (field.name === "aadhaar_no") {
+                    const cleanValue = e.target.value.replace(/\s/g, '').replace(/\D/g, '');
+                    newValues[field.name] = cleanValue;
+                  }
                 }}
                 placeholder={field.placeholder}
                 className="bg-gray-800 border border-gray-700 rounded px-3 py-2"
+                inputMode={getInputMode(field)}
+                autoComplete="off"
               />
             )}
           </>

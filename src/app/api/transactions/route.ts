@@ -124,6 +124,34 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Include card details if requested or if card_number exists
+    if (include.includes('cards') || transactions.some(t => t.card_number)) {
+      const cardNumbers = [...new Set(transactions.map(t => t.card_number).filter(Boolean))];
+      if (cardNumbers.length > 0) {
+        const cardQuery = `
+          SELECT card_number, card_name, bank_name, card_type
+          FROM card_details 
+          WHERE card_number = ANY($1)
+        `;
+        const { rows: cards } = await query(cardQuery, [cardNumbers]);
+        
+        const cardMap = new Map(cards.map(c => [c.card_number, c]));
+        transactions.forEach(transaction => {
+          if (transaction.card_number) {
+            const cardDetails = cardMap.get(transaction.card_number);
+            if (cardDetails) {
+              // Only update card_name if it's not already set
+              if (!transaction.card_name) {
+                transaction.card_name = cardDetails.card_name;
+              }
+              transaction.bank_name = cardDetails.bank_name;
+              transaction.card_type = cardDetails.card_type;
+            }
+          }
+        });
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: transactions,

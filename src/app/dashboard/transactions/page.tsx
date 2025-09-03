@@ -67,6 +67,12 @@ export default function TransactionsPage() {
     fetchTransactions();
   }, [fetchTransactions]);
 
+  // Transform transactions to include customer names and calculate totals
+  const rows = transactions.map((transaction: any) => ({
+    ...transaction,
+    customer_name: transaction.customer?.full_name || 'Unknown'
+  }));
+
   // Calculate totals whenever transactions change
   useEffect(() => {
     const totals = calculateTotals(transactions);
@@ -224,7 +230,7 @@ export default function TransactionsPage() {
 
 
 
-      <DataTable data={transactions} columns={schema.listColumns as any} onEdit={(r)=>{setEditing(r); setOpen(true);}} onDelete={onDelete} showActions={false} />
+      <DataTable data={rows} columns={schema.listColumns as any} onEdit={(r)=>{setEditing(r); setOpen(true);}} onDelete={onDelete} showActions={false} />
       <TransactionFormModal 
         open={open} 
         onClose={()=>setOpen(false)} 

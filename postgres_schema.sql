@@ -10,7 +10,8 @@ CREATE TABLE IF NOT EXISTS public.customers (
     pin_code VARCHAR(10),
     email_id VARCHAR(100),
     contact_no VARCHAR(15),
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Customer Tax Details

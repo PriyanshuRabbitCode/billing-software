@@ -86,6 +86,22 @@ export default function CrudFormModal<T>({
     };
   }, [fields]);
 
+  // Helper functions for input types
+  const getInputType = (field: CrudField) => {
+    if (field.type === "number") return "number";
+    if (field.type === "datetime") return "datetime-local";
+    if (field.name === "email_id") return "email";
+    if (field.name === "contact_no") return "tel";
+    return "text";
+  };
+
+  const getInputMode = (field: CrudField) => {
+    if (field.type === "number") return "numeric";
+    if (field.name === "contact_no" || field.name === "pin_code") return "numeric";
+    if (field.name === "email_id") return "email";
+    return "text";
+  };
+
   const validate = (): boolean => {
     const e: Record<string, string> = {};
     for (const f of fields) {
@@ -157,11 +173,13 @@ export default function CrudFormModal<T>({
                     />
                   ) : (
                     <input
-                      type={f.type === "number" ? "number" : f.type === "datetime" ? "datetime-local" : "text"}
+                      type={getInputType(f)}
                       value={values[f.name] ?? ""}
                       onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
                       placeholder={f.placeholder}
                       className="bg-gray-800 border border-gray-700 rounded px-3 py-2"
+                      inputMode={getInputMode(f)}
+                      autoComplete="off"
                     />
                   )}
                 </>
@@ -200,10 +218,38 @@ export default function CrudFormModal<T>({
                         // Filter card options based on selected bank and type
                         f.enumValues
                           ?.filter(card => {
-                            const bankPrefix = values['bank_name']?.split(' ')[0];
-                            const cardType = values['card_type']?.split(' ')[0];
-                            return bankPrefix && cardType ? 
-                              card.startsWith(bankPrefix) && card.includes(cardType) : true;
+                            const bankName = values['bank_name'];
+                            const cardType = values['card_type'];
+                            
+                            if (!bankName || !cardType) return true;
+                            
+                            // Check if card type matches (Credit/Debit)
+                            const typeMatch = card.toLowerCase().includes(cardType.toLowerCase());
+                            
+                            // Special handling for common bank abbreviations
+                            const bankAbbreviations: Record<string, string[]> = {
+                              'State Bank of India': ['SBI', 'State'],
+                              'HDFC Bank': ['HDFC'],
+                              'ICICI Bank': ['ICICI'],
+                              'Punjab National Bank': ['PNB', 'Punjab'],
+                              'Bank of Baroda': ['BOB', 'Baroda'],
+                              'Canara Bank': ['Canara'],
+                              'Union Bank of India': ['Union'],
+                              'Axis Bank': ['Axis'],
+                              'Kotak Mahindra Bank': ['Kotak'],
+                              'IndusInd Bank': ['IndusInd'],
+                              'Yes Bank': ['Yes'],
+                              'Federal Bank': ['Federal'],
+                              'IDBI Bank': ['IDBI'],
+                              'RBL Bank': ['RBL']
+                            };
+                            
+                            const bankAbbrev = bankAbbreviations[bankName as string];
+                            const hasAbbreviation = bankAbbrev ? bankAbbrev.some(abbrev => 
+                              card.toUpperCase().includes(abbrev)
+                            ) : false;
+                            
+                            return typeMatch && hasAbbreviation;
                           })
                           .map((opt) => (
                             <option key={opt} value={opt}>

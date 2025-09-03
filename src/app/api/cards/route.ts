@@ -163,28 +163,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if card number already exists (if provided)
+    // Check if card number already exists (if provided) - ignore spaces
     if (card_number) {
+      // Clean the card number by removing spaces for comparison
+      const cleanCardNumber = card_number.replace(/\s/g, '');
+      
       const existingCard = await query(
-        'SELECT id FROM card_details WHERE card_number = $1',
-        [card_number]
+        'SELECT id FROM card_details WHERE REPLACE(card_number, \' \', \'\') = $1',
+        [cleanCardNumber]
       );
       if (existingCard.rows.length > 0) {
         return NextResponse.json(
-          { success: false, error: 'Card number already exists' },
+          { success: false, error: 'Card number already exists (ignoring spaces)' },
           { status: 400 }
         );
       }
     }
 
-    // Insert new card
+    // Insert new card - clean card number by removing spaces before storing
+    const cleanCardNumber = card_number ? card_number.replace(/\s/g, '') : null;
+    
     const insertQuery = `
       INSERT INTO card_details (customer_id, bank_name, card_type, card_name, card_number, due_date)
       VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `;
     const { rows } = await query(insertQuery, [
-      customer_id, bank_name, card_type, card_name, card_number, due_date
+      customer_id, bank_name, card_type, card_name, cleanCardNumber, due_date
     ]);
 
     return NextResponse.json({

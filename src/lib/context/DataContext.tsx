@@ -289,6 +289,7 @@ export function DataProvider({ children }: DataProviderProps) {
       const params = new URLSearchParams();
       params.append('limit', limit.toString());
       params.append('offset', offset.toString());
+      params.append('include', 'customer,cards'); // Include customer and card data
       if (forceRefresh) params.append('refresh', 'true');
 
       const response = await fetch(`/api/transactions?${params.toString()}`);
@@ -324,6 +325,7 @@ export function DataProvider({ children }: DataProviderProps) {
 
     try {
       const params = new URLSearchParams();
+      params.append('include', 'customer'); // Include customer data
       if (forceRefresh) params.append('refresh', 'true');
 
       const response = await fetch(`/api/cards?${params.toString()}`);
