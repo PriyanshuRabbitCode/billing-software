@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       mdr_amount: 0,
       mdr_charge_amount: 0,
       profit_amount: 0,
-      pending_amount: 0, // This will be calculated by the system
+      pending_amount: -amount, // Negative to reduce the total pending amount
       status: 'PAID'
     };
 

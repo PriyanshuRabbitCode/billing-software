@@ -130,7 +130,7 @@ export default function CustomerViewModal({
     setPaymentModalOpen(true);
   };
 
-  const handlePaymentSuccess = (cardNumber: string, newPendingAmount: number) => {
+  const handlePaymentSuccess = async (cardNumber: string, newPendingAmount: number) => {
     // Update the card data optimistically
     setCardPendingAmounts(prev => 
       prev.map(card => 
@@ -139,6 +139,14 @@ export default function CustomerViewModal({
           : card
       )
     );
+    
+    // Refresh the customer data to get updated transactions and pending amounts
+    try {
+      await loadCustomerData();
+    } catch (error) {
+      console.error('Error refreshing customer data after payment:', error);
+      // If refresh fails, at least we have the optimistic update
+    }
   };
 
   const handlePaymentModalClose = () => {

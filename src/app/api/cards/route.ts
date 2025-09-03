@@ -163,11 +163,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if card number already exists (if provided) - ignore spaces
+    // Validate card number format if provided
     if (card_number) {
-      // Clean the card number by removing spaces for comparison
+      // Clean the card number by removing spaces for validation
       const cleanCardNumber = card_number.replace(/\s/g, '');
       
+      // Validate exactly 16 digits
+      if (!/^\d{16}$/.test(cleanCardNumber)) {
+        return NextResponse.json(
+          { success: false, error: 'Card number must be exactly 16 digits' },
+          { status: 400 }
+        );
+      }
+      
+      // Check if card number already exists
       const existingCard = await query(
         'SELECT id FROM card_details WHERE REPLACE(card_number, \' \', \'\') = $1',
         [cleanCardNumber]

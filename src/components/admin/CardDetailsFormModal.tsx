@@ -264,24 +264,9 @@ export default function CardDetailsFormModal({
       // Validate exactly 16 digits
       if (!/^\d{16}$/.test(cardNumber)) {
         e.card_number = "Card number must be exactly 16 digits";
-      } else {
-        try {
-          // Check if card number already exists
-          const response = await fetch('/api/check-card-number', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ card_number: cardNumber })
-          });
-
-          const data = await response.json();
-          
-          if (data.exists && (!initial || initial.card_number !== values.card_number)) {
-            e.card_number = "This card number already exists. Please enter a unique card number.";
-          }
-        } catch {
-          e.card_number = "Error validating card number. Please try again.";
-        }
       }
+      // Note: Duplicate card number validation is handled by the API
+      // No need to pre-check here as the API will return proper error messages
     }
     
     setErrors(e);
@@ -299,10 +284,9 @@ export default function CardDetailsFormModal({
     
     setLoading(true);
     try {
-      // Format card number with spaces for better readability if provided
+      // Clean card number by removing spaces before submission (API will handle formatting)
       if (values.card_number) {
-        const cardNumber = (values.card_number as string).replace(/\s+/g, '');
-        values.card_number = cardNumber.replace(/(\d{4})/g, '$1 ').trim();
+        values.card_number = (values.card_number as string).replace(/\s+/g, '');
       }
       
       console.log('Submitting values:', values);

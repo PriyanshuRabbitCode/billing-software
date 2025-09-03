@@ -198,7 +198,7 @@ export async function GET(request: NextRequest) {
           AND t.card_number IS NOT NULL 
           AND TRIM(t.card_number) != ''
         GROUP BY t.customer_id, TRIM(t.card_number)
-        HAVING COALESCE(SUM(t.pending_amount), 0) > 0 OR COALESCE(SUM(t.deposit_amount), 0) > 0
+        HAVING COALESCE(SUM(t.deposit_amount), 0) > 0
         ORDER BY t.customer_id, TRIM(t.card_number)
       `, [customerIds]);
       
