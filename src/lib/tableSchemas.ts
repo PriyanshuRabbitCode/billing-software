@@ -117,6 +117,11 @@ export const schemas: Record<string, TableSchema> = {
       ] },
       { name: "card_number", label: "Card Number", type: "text", placeholder: "XXXX XXXX XXXX XXXX" },
       { name: "due_date", label: "Due Date", type: "datetime" },
+      { name: "enable_defaults", label: "Enable Defaults", type: "boolean" },
+      { name: "default_pos_type", label: "Default POS Type", type: "enum", enumValues: ["MP", "PH", "MOS", "Custom"] },
+      { name: "custom_pos_type", label: "Custom POS Type", type: "text" },
+      { name: "default_tax_rate", label: "Default Tax Rate %", type: "number" },
+      { name: "default_mdr_rate", label: "Default MDR %", type: "number" },
     ],
     listColumns: [
       { key: "customer_name", label: "Customer" },

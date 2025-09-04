@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Filter } from "lucide-react";
 
 interface Transaction {
@@ -31,6 +31,7 @@ interface Card {
 
 export default function CustomerTransactionsPage() {
   const params = useParams();
+  const router = useRouter();
   const customerId = params.customerId as string;
   
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -71,24 +72,30 @@ export default function CustomerTransactionsPage() {
     setError("");
 
     try {
+      console.log('Loading data for customer ID:', customerId);
+      
       // Load customer data
       const customerRes = await fetch(`/api/customers?id=${customerId}`);
       const result = await customerRes.json();
       const customerData = result.data[0];
+      console.log('Customer data loaded:', customerData);
       setCustomer(customerData);
 
       // Load transactions
       const transactionsRes = await fetch(`/api/transactions?customer_id=${customerId}`);
       const transactionsData = await transactionsRes.json();
-      setTransactions(transactionsData);
+      console.log('Transactions data loaded:', transactionsData);
+      setTransactions(transactionsData.data || []);
 
       // Load customer cards
       const cardsRes = await fetch(`/api/cards?customer_id=${customerId}`);
       const cardsResult = await cardsRes.json();
       const cardsData = cardsResult.data || [];
+      console.log('Cards data loaded:', cardsData);
       setCards(cardsData);
 
     } catch (err: any) {
+      console.error('Error loading data:', err);
       setError(err.message || 'Failed to load data');
     } finally {
       setLoading(false);
@@ -105,7 +112,7 @@ export default function CustomerTransactionsPage() {
     : transactions;
 
   const handleBack = () => {
-    window.location.href = `/dashboard/customers`;
+    router.push('/dashboard/customers');
   };
 
   if (loading) {

@@ -1,7 +1,35 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import SearchableCustomerInput from "./SearchableCustomerInput";
+
+/**
+ * TransactionFormModal - Add/Edit Transactions
+ * 
+ * Corrected Transaction Form Flow:
+ * Step 1: User selects or types Customer Name
+ * Step 2: Load all cards of the selected customer
+ * Step 3: Auto-select the first card (if only one card, lock selection; if multiple, user can switch via dropdown)
+ * Step 4: Check card settings
+ *   - If card has custom defaults (POS Type, Tax Rate %, MDR %) → Auto-fill them from card_details table
+ *   - Else → POS Type: Default is shown, user selects from dropdown
+ *           Tax Rate %: User selects from dropdown (based on POS Type)
+ *           MDR %: System default value is applied
+ * Step 5: User enters Deposit Amount & Withdraw Amount
+ * Step 6: System dynamically calculates: Tax Amount, MDR Charge Amount, Profit Amount, Payable Amount, Pending Amount
+ * Step 7: Form validation (check all required fields, calculations, constraints)
+ * Step 8: Submit Transaction
+ * 
+ * MDR Calculation Logic:
+ * - Cards with custom defaults: Use card's MDR value from card_details table
+ * - Cards without custom defaults: MDR gets system default value (2.00%)
+ * - MDR can be auto-calculated when user manually changes POS Type or Tax Rate
+ * 
+ * Key Benefits:
+ * - No duplicate data entry: Values are fetched from existing card_details table
+ * - Consistent with business rules: MDR mapping ensures valid POS Type + Tax Rate combinations
+ * - User-friendly: Dropdown selection prevents invalid input
+ */
 
 interface TransactionFormModalProps {
   open: boolean;
@@ -36,29 +64,84 @@ export default function TransactionFormModal({
     status: ""
   });
   const [loading, setLoading] = useState(false);
-  const [cardOptions, setCardOptions] = useState<Array<{ card_number: string; card_name: string }>>([]);
+  const [cardOptions, setCardOptions] = useState<Array<{ 
+    card_number: string; 
+    card_name: string;
+    enable_defaults?: boolean;
+    default_pos_type?: string;
+    custom_pos_type?: string;
+    default_tax_rate?: number;
+    default_mdr_rate?: number;
+  }>>([]);
   const [initialCustomerName, setInitialCustomerName] = useState<string>("");
 
-  // Define the tax and MDR rates structure
-  const TAX_MDR_RATES = {
-    MP: [
-      { tax: 3.50, mdr: 1.50 },
-      { tax: 3.00, mdr: 2.00 },
-      { tax: 2.80, mdr: 2.00 },
-      { tax: 2.00, mdr: 1.50 }
-    ],
-    PH: [
-      { tax: 3.50, mdr: 1.50 },
-      { tax: 2.80, mdr: 2.00 },
-      { tax: 1.90, mdr: 1.50 }
-    ],
-    MOS: [
-      { tax: 2.80, mdr: 2.00 },
-      { tax: 2.50, mdr: 2.00 },
-      { tax: 2.00, mdr: 1.50 },
-      { tax: 1.80, mdr: 1.50 }
-    ]
+  // MDR Rate mapping based on POS Type and Tax Rate
+  const MDR_MAPPING = {
+    'MP': {
+      '3.50': 1.50,
+      '3.00': 2.00,
+      '2.80': 2.00,
+      '2.00': 1.50
+    },
+    'PH': {
+      '3.50': 1.50,
+      '2.80': 2.00,
+      '1.90': 1.50
+    },
+    'MOS': {
+      '2.80': 2.00,
+      '2.50': 2.00,
+      '2.00': 1.50,
+      '1.80': 1.50
+    }
   };
+
+  // System default values
+  const SYSTEM_DEFAULTS = {
+    POS_TYPE: 'MP', // Default POS Type
+    MDR_RATE: 2.00, // Default MDR Rate (%) - system default
+  };
+
+  // Memoize card options to prevent unnecessary re-renders
+  const memoizedCardOptions = useMemo(() => cardOptions, [cardOptions]);
+
+  // Function to calculate MDR Rate based on POS Type and Tax Rate
+  const calculateMDRRate = useCallback((posType: string, taxRate: string): number | null => {
+    if (!posType || !taxRate) return null;
+    
+    const posMapping = MDR_MAPPING[posType as keyof typeof MDR_MAPPING];
+    if (!posMapping) return null;
+    
+    const mdrRate = posMapping[taxRate as keyof typeof posMapping];
+    return mdrRate || null;
+  }, []);
+
+  // Function to get available tax rates for a given POS Type
+  const getAvailableTaxRates = useCallback((posType: string): string[] => {
+    const posMapping = MDR_MAPPING[posType as keyof typeof MDR_MAPPING];
+    return posMapping ? Object.keys(posMapping) : [];
+  }, []);
+
+  // Handle field change
+  const handleChange = useCallback((name: string, value: any) => {
+    console.log(`handleChange called: ${name} = ${value}`);
+    console.log(`Previous values:`, values);
+    
+    setValues(prev => {
+      const newValues = { ...prev, [name]: value };
+      
+      // If card_number changes, update card_name if we have that card
+      if (name === 'card_number') {
+        const selectedCard = memoizedCardOptions.find(card => card.card_number === value);
+        if (selectedCard) {
+          newValues.card_name = selectedCard.card_name;
+        }
+      }
+      
+      console.log(`New values after ${name} change:`, newValues);
+      return newValues;
+    });
+  }, [memoizedCardOptions, values]);
 
   // Initialize form values
   useEffect(() => {
@@ -115,12 +198,33 @@ export default function TransactionFormModal({
           setInitialCustomerName("");
         }
       } else {
-        setInitialCustomerName("");
+          setInitialCustomerName("");
+        }
       }
-    }
+      
+      loadInitialCustomerName();
+    }, [initial?.customer_id, open]);
+
+  // Debug: Log when values change
+  useEffect(() => {
+    console.log('🔄 Values changed:', {
+      customer_id: values.customer_id,
+      card_number: values.card_number,
+      pos_type: values.pos_type,
+      tax_rate: values.tax_rate,
+      mdr_amount: values.mdr_amount
+    });
     
-    loadInitialCustomerName();
-  }, [initial?.customer_id, open]);
+    // Log the actual form field values to see if they're being updated
+    console.log('📊 Current form state:', {
+      pos_type: values.pos_type,
+      tax_rate: values.tax_rate,
+      mdr_amount: values.mdr_amount,
+      pos_type_length: values.pos_type?.length || 0,
+      tax_rate_length: values.tax_rate?.length || 0,
+      mdr_amount_length: values.mdr_amount?.length || 0
+    });
+  }, [values.customer_id, values.card_number, values.pos_type, values.tax_rate, values.mdr_amount]);
 
   // Load card options when customer changes
   useEffect(() => {
@@ -138,12 +242,104 @@ export default function TransactionFormModal({
         
         const result = await res.json();
         const customerCards = result.data || [];
-        const validCards = customerCards.filter((card: any) => card.card_number);
+        const validCards = customerCards.filter((card: any) => card.card_number) as Array<{
+          card_number: string;
+          card_name: string;
+          enable_defaults?: boolean;
+          default_pos_type?: string;
+          custom_pos_type?: string;
+          default_tax_rate?: number;
+          default_mdr_rate?: number;
+        }>;
+
+        console.log('Valid cards found:', validCards.length);
+        console.log('🔍 Raw card data from API:', validCards);
+        console.log('Card details:', validCards.map(card => ({
+          card_number: card.card_number,
+          card_name: card.card_name,
+          enable_defaults: card.enable_defaults,
+          default_pos_type: card.default_pos_type,
+          custom_pos_type: card.custom_pos_type,
+          default_tax_rate: card.default_tax_rate,
+          default_mdr_rate: card.default_mdr_rate,
+          default_tax_rate_type: typeof card.default_tax_rate,
+          default_mdr_rate_type: typeof card.default_mdr_rate
+        })));
+        
+        // Check if any card has custom defaults
+        const hasCustomDefaults = validCards.some(card => card.enable_defaults);
+        console.log('Has cards with custom defaults:', hasCustomDefaults);
+        
         setCardOptions(validCards);
         
-        if (validCards.length > 0 && !values.card_number) {
-          handleChange('card_number', validCards[0].card_number);
-          handleChange('card_name', validCards[0].card_name);
+                if (validCards.length > 0 && !values.card_number) {
+          // Find the first card with custom defaults, or fall back to the first card
+          const cardWithDefaults = validCards.find(card => card.enable_defaults) || validCards[0];
+          const selectedCard = cardWithDefaults;
+          
+          console.log('Selected card for auto-fill:', {
+            card_number: selectedCard.card_number,
+            card_name: selectedCard.card_name,
+            enable_defaults: selectedCard.enable_defaults,
+            default_pos_type: selectedCard.default_pos_type,
+            custom_pos_type: selectedCard.custom_pos_type,
+            default_tax_rate: selectedCard.default_tax_rate,
+            default_mdr_rate: selectedCard.default_mdr_rate
+          });
+          
+          // Set card number, name, and defaults in a single setValues call
+          console.log('About to call setValues for initial card loading...');
+          setValues(prev => {
+            console.log('setValues callback executed with prev:', prev);
+            const updates: Record<string, any> = {
+              card_number: selectedCard.card_number,
+              card_name: selectedCard.card_name
+            };
+            
+            // Step 4: Check card settings and apply appropriate defaults
+            if (selectedCard.enable_defaults) {
+              // Card has custom defaults - auto-fill them
+              console.log('Selected card has custom defaults, auto-filling...');
+              console.log('Selected card details:', {
+                enable_defaults: selectedCard.enable_defaults,
+                default_pos_type: selectedCard.default_pos_type,
+                custom_pos_type: selectedCard.custom_pos_type,
+                default_tax_rate: selectedCard.default_tax_rate,
+                default_mdr_rate: selectedCard.default_mdr_rate
+              });
+              
+              if (selectedCard.default_pos_type) {
+                // If POS Type is "Custom", use the custom_pos_type value
+                if (selectedCard.default_pos_type === 'Custom' && selectedCard.custom_pos_type) {
+                  updates.pos_type = selectedCard.custom_pos_type;
+                  console.log('Using custom POS Type from selected card:', selectedCard.custom_pos_type);
+                } else {
+                  updates.pos_type = selectedCard.default_pos_type;
+                  console.log('Using predefined POS Type from selected card:', selectedCard.default_pos_type);
+                }
+              }
+              if (selectedCard.default_tax_rate !== null && selectedCard.default_tax_rate !== undefined) {
+                updates.tax_rate = selectedCard.default_tax_rate.toString();
+                console.log('Using default Tax Rate from selected card:', selectedCard.default_tax_rate);
+              }
+              if (selectedCard.default_mdr_rate !== null && selectedCard.default_mdr_rate !== undefined) {
+                updates.mdr_amount = selectedCard.default_mdr_rate.toString();
+                console.log('Using default MDR Rate from selected card:', selectedCard.default_mdr_rate);
+              }
+            } else {
+              // Card has no custom defaults - apply system defaults
+              console.log('Selected card has no custom defaults, applying system defaults...');
+              updates.pos_type = SYSTEM_DEFAULTS.POS_TYPE;
+              updates.mdr_amount = SYSTEM_DEFAULTS.MDR_RATE.toString(); // Apply system default MDR
+              // Tax Rate % remains empty - user must select manually
+            }
+            
+            // Card defaults applied successfully
+            
+            const newValues = { ...prev, ...updates };
+            console.log('Initial card loading - Final values:', newValues);
+            return newValues;
+          });
         }
       } catch (err) {
         console.error('Error loading card options:', err);
@@ -156,36 +352,211 @@ export default function TransactionFormModal({
     }
   }, [values.customer_id]);
 
-  // Calculate fees when withdraw amount, POS type, or tax rate changes
+    // Auto-fill default values when card is selected
   useEffect(() => {
-    if (values.withdraw_amount && values.pos_type && values.tax_rate) {
-      const withdrawAmount = Number(values.withdraw_amount);
-      const posType = values.pos_type;
-      const taxRate = Number(values.tax_rate);
+    console.log('Card selection effect triggered:', {
+      card_number: values.card_number,
+      memoizedCardOptions_length: memoizedCardOptions.length,
+      memoizedCardOptions: memoizedCardOptions
+    });
+    
+    if (values.card_number && memoizedCardOptions.length > 0) {
+      const selectedCard = memoizedCardOptions.find(card => card.card_number === values.card_number);
       
-      // Get available rates for the selected POS type
-      const availableRates = TAX_MDR_RATES[posType as keyof typeof TAX_MDR_RATES];
+      console.log('Card selected for transaction:', {
+        card_number: selectedCard?.card_number,
+        enable_defaults: selectedCard?.enable_defaults,
+        default_pos_type: selectedCard?.default_pos_type,
+        custom_pos_type: selectedCard?.custom_pos_type,
+        default_tax_rate: selectedCard?.default_tax_rate,
+        default_mdr_rate: selectedCard?.default_mdr_rate
+      });
       
-      if (availableRates && availableRates.length > 0) {
-        // Find the MDR rate for the selected tax rate
-        const selectedRate = availableRates.find(rate => rate.tax === taxRate);
+      if (selectedCard && selectedCard.enable_defaults) {
+        // Card has custom defaults - auto-fill them
+        console.log('Auto-filling from card defaults...');
+        console.log('Selected card details:', {
+          enable_defaults: selectedCard.enable_defaults,
+          default_pos_type: selectedCard.default_pos_type,
+          custom_pos_type: selectedCard.custom_pos_type,
+          default_tax_rate: selectedCard.default_tax_rate,
+          default_mdr_rate: selectedCard.default_mdr_rate
+        });
         
-        if (selectedRate) {
-          const taxAmount = (withdrawAmount * taxRate) / 100;
-          const mdrChargeAmount = (withdrawAmount * selectedRate.mdr) / 100;
-          const profitAmount = taxAmount - mdrChargeAmount;
+        setValues(prev => {
+          const updates: Record<string, any> = {};
           
+          if (selectedCard.default_pos_type) {
+            // If POS Type is "Custom", use the custom_pos_type value
+            if (selectedCard.default_pos_type === 'Custom' && selectedCard.custom_pos_type) {
+              updates.pos_type = selectedCard.custom_pos_type;
+              console.log('Using custom POS Type:', selectedCard.custom_pos_type);
+            } else {
+              updates.pos_type = selectedCard.default_pos_type;
+              console.log('Using predefined POS Type:', selectedCard.default_pos_type);
+            }
+          }
+          if (selectedCard.default_tax_rate !== null && selectedCard.default_tax_rate !== undefined) {
+            updates.tax_rate = selectedCard.default_tax_rate.toString();
+            console.log('Using default Tax Rate:', selectedCard.default_tax_rate);
+          }
+          if (selectedCard.default_mdr_rate !== null && selectedCard.default_mdr_rate !== undefined) {
+            updates.mdr_amount = selectedCard.default_mdr_rate.toString();
+            console.log('Using default MDR Rate:', selectedCard.default_mdr_rate);
+          }
+          
+          console.log('Final updates object:', updates);
+          console.log('Previous values:', prev);
+          const newValues = { ...prev, ...updates };
+          console.log('New values after update:', newValues);
+          return newValues;
+        });
+      } else if (selectedCard && !selectedCard.enable_defaults) {
+        // Card has no custom defaults - apply system defaults
+        console.log('Applying system defaults...');
+        setValues(prev => ({
+          ...prev,
+          pos_type: SYSTEM_DEFAULTS.POS_TYPE,
+          tax_rate: '', // User must select manually
+          mdr_amount: SYSTEM_DEFAULTS.MDR_RATE.toString() // Apply system default MDR
+        }));
+      }
+    }
+  }, [values.card_number, memoizedCardOptions]);
+
+  // Auto-fill fields when "Custom" POS Type is selected
+  const customAutoFillProcessed = useRef(false);
+  
+  useEffect(() => {
+    console.log('🔍 POS Type change detected:', {
+      pos_type: values.pos_type,
+      card_number: values.card_number,
+      memoizedCardOptions_length: memoizedCardOptions.length,
+      customAutoFillProcessed: customAutoFillProcessed.current
+    });
+    
+    if (values.pos_type === 'Custom' && values.card_number && memoizedCardOptions.length > 0 && !customAutoFillProcessed.current) {
+      const selectedCard = memoizedCardOptions.find(card => card.card_number === values.card_number);
+      
+      console.log('✅ Custom POS Type selected, auto-filling from card defaults...');
+      console.log('📋 Selected card details:', {
+        card_number: selectedCard?.card_number,
+        card_name: selectedCard?.card_name,
+        enable_defaults: selectedCard?.enable_defaults,
+        default_pos_type: selectedCard?.default_pos_type,
+        custom_pos_type: selectedCard?.custom_pos_type,
+        default_tax_rate: selectedCard?.default_tax_rate,
+        default_mdr_rate: selectedCard?.default_mdr_rate,
+        default_tax_rate_type: typeof selectedCard?.default_tax_rate,
+        default_mdr_rate_type: typeof selectedCard?.default_mdr_rate
+      });
+      
+      if (selectedCard) {
+        console.log('🎯 Card found, proceeding with auto-fill...');
+        
+        // Mark as processed to prevent infinite loops
+        customAutoFillProcessed.current = true;
+        
+        const updates: Record<string, any> = {};
+        
+        // Use the card's custom POS Type value
+        if (selectedCard.custom_pos_type) {
+          updates.pos_type = selectedCard.custom_pos_type;
+          console.log('🔄 Setting POS Type to custom value:', selectedCard.custom_pos_type);
+        } else {
+          console.log('❌ No custom_pos_type found in card');
+        }
+        
+        // Use the card's default Tax Rate
+        console.log('🔍 Checking default_tax_rate:', {
+          value: selectedCard.default_tax_rate,
+          type: typeof selectedCard.default_tax_rate,
+          isNull: selectedCard.default_tax_rate === null,
+          isUndefined: selectedCard.default_tax_rate === undefined,
+          isString: typeof selectedCard.default_tax_rate === 'string',
+          isNumber: typeof selectedCard.default_tax_rate === 'number'
+        });
+        
+        if (selectedCard.default_tax_rate !== null && selectedCard.default_tax_rate !== undefined) {
+          updates.tax_rate = selectedCard.default_tax_rate.toString();
+          console.log('✅ Setting Tax Rate to card default:', selectedCard.default_tax_rate);
+        } else {
+          console.log('❌ Tax Rate not set - value is null/undefined');
+        }
+        
+        // Use the card's default MDR Rate
+        console.log('🔍 Checking default_mdr_rate:', {
+          value: selectedCard.default_mdr_rate,
+          type: typeof selectedCard.default_mdr_rate,
+          isNull: selectedCard.default_mdr_rate === null,
+          isUndefined: selectedCard.default_mdr_rate === undefined,
+          isString: typeof selectedCard.default_mdr_rate === 'string',
+          isNumber: typeof selectedCard.default_mdr_rate === 'number'
+        });
+        
+        if (selectedCard.default_mdr_rate !== null && selectedCard.default_mdr_rate !== undefined) {
+          updates.mdr_amount = selectedCard.default_mdr_rate.toString();
+          console.log('✅ Setting MDR to card default:', selectedCard.default_mdr_rate);
+        } else {
+          console.log('❌ MDR not set - value is null/undefined');
+        }
+        
+        console.log('📊 Final updates object:', updates);
+        console.log('🔢 Number of updates:', Object.keys(updates).length);
+        
+        // Only update if we have values to set
+        if (Object.keys(updates).length > 0) {
+          console.log('🚀 Calling setValues with updates:', updates);
+          setValues(prev => {
+            console.log('📝 Previous values before update:', prev);
+            const newValues = { ...prev, ...updates };
+            console.log('🆕 New values after custom auto-fill:', newValues);
+            return newValues;
+          });
+        } else {
+          console.log('❌ No updates to apply - updates object is empty');
+        }
+      } else {
+        console.log('❌ No card found for auto-fill');
+      }
+    } else if (values.pos_type !== 'Custom') {
+      // Reset the flag when POS Type changes to something other than Custom
+      console.log('🔄 Resetting customAutoFillProcessed flag - POS Type changed from Custom');
+      customAutoFillProcessed.current = false;
+    } else {
+      console.log('❌ Custom auto-fill conditions not met:', {
+        pos_type_is_custom: values.pos_type === 'Custom',
+        has_card_number: !!values.card_number,
+        has_card_options: memoizedCardOptions.length > 0,
+        already_processed: customAutoFillProcessed.current
+      });
+    }
+  }, [values.pos_type, values.card_number, memoizedCardOptions]);
+
+  // Auto-calculate MDR Rate when POS Type or Tax Rate changes (only for manual user changes)
+  useEffect(() => {
+    if (values.pos_type && values.tax_rate) {
+      const calculatedMDR = calculateMDRRate(values.pos_type, values.tax_rate);
+      
+      if (calculatedMDR !== null) {
+        // Only update MDR if it's not from card defaults AND user is manually changing values
+        const selectedCard = memoizedCardOptions.find(card => card.card_number === values.card_number);
+        const isFromCardDefaults = selectedCard?.enable_defaults && 
+                                 typeof selectedCard.default_mdr_rate === 'number' &&
+                                 selectedCard.default_mdr_rate.toString() === values.mdr_amount;
+        
+        // Only auto-calculate if user is manually changing values (not during initial card selection)
+        // Also check if this is not from card defaults
+        if (!isFromCardDefaults && 
+            values.mdr_amount !== SYSTEM_DEFAULTS.MDR_RATE.toString()) {
           setValues(prev => ({
             ...prev,
-            mdr_amount: selectedRate.mdr.toString(),
-            tax_amount: taxAmount.toFixed(2),
-            mdr_charge_amount: mdrChargeAmount.toFixed(2),
-            profit_amount: profitAmount.toFixed(2)
+            mdr_amount: calculatedMDR.toString()
           }));
         }
       }
     }
-  }, [values.withdraw_amount, values.pos_type, values.tax_rate]);
+  }, [values.pos_type, values.tax_rate, values.card_number, memoizedCardOptions, calculateMDRRate]);
 
   // Update payable amount when withdraw amount or tax checkbox changes
   useEffect(() => {
@@ -264,21 +635,6 @@ export default function TransactionFormModal({
       status: status
     }));
   }, [values.deposit_amount, values.withdraw_amount, values.tax_amount, values.add_tax_to_withdraw]);
-
-  // Handle field change
-  const handleChange = (name: string, value: any) => {
-    const newValues = { ...values, [name]: value };
-    
-    // If card_number changes, update card_name if we have that card
-    if (name === 'card_number') {
-      const selectedCard = cardOptions.find(card => card.card_number === value);
-      if (selectedCard) {
-        newValues.card_name = selectedCard.card_name;
-      }
-    }
-    
-    setValues(newValues);
-  };
 
   // Validate form
   const validateForm = (): { isValid: boolean; errors: string[] } => {
@@ -492,35 +848,62 @@ export default function TransactionFormModal({
 
               {/* POS Type Field */}
               <div className="mb-4">
-                <label className="block text-xs text-gray-400 mb-1">POS Type</label>
+                <label className="block text-xs text-gray-400 mb-1">
+                  POS Type
+                  {values.pos_type && memoizedCardOptions.find(card => card.card_number === values.card_number)?.enable_defaults && 
+                   memoizedCardOptions.find(card => card.card_number === values.card_number)?.default_pos_type === values.pos_type && (
+                    <span className="ml-2 text-xs text-blue-400">(Auto-filled from card defaults)</span>
+                  )}
+                  {values.pos_type && values.pos_type === SYSTEM_DEFAULTS.POS_TYPE && 
+                   (!memoizedCardOptions.find(card => card.card_number === values.card_number)?.enable_defaults || 
+                    !memoizedCardOptions.find(card => card.card_number === values.card_number)?.default_pos_type) && (
+                    <span className="ml-2 text-xs text-green-400">(System default)</span>
+                  )}
+                </label>
                 <select
                   value={values.pos_type}
                   onChange={(e) => handleChange('pos_type', e.target.value)}
                   className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
                 >
-                  <option value="">Select POS Type...</option>
-                  <option value="MP">MP</option>
+                  <option value="">Select POS Type</option>
+                  <option value="MP">MP (Default)</option>
                   <option value="PH">PH</option>
                   <option value="MOS">MOS</option>
+                  <option value="Custom">Custom (Use Card Defaults)</option>
                 </select>
+
               </div>
 
               {/* Tax Rate Field */}
               <div className="mb-4">
-                <label className="block text-xs text-gray-400 mb-1">Tax Rate (%)</label>
+                <label className="block text-xs text-gray-400 mb-1">
+                  Tax Rate (%) *
+                  {values.tax_rate && memoizedCardOptions.find(card => card.card_number === values.card_number)?.enable_defaults && 
+                   memoizedCardOptions.find(card => card.card_number === values.card_number)?.default_tax_rate?.toString() === values.tax_rate && (
+                    <span className="ml-2 text-xs text-blue-400">(Auto-filled from card defaults)</span>
+                  )}
+                  {!values.tax_rate && (
+                    <span className="ml-2 text-xs text-yellow-400">(Manual selection required)</span>
+                  )}
+                  {values.pos_type && !values.tax_rate && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      Available for {values.pos_type}: {getAvailableTaxRates(values.pos_type).join(', ')}%
+                    </div>
+                  )}
+                </label>
                 <select
                   value={values.tax_rate}
                   onChange={(e) => handleChange('tax_rate', e.target.value)}
                   className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-                  disabled={!values.pos_type}
+                  disabled={!!(values.tax_rate && memoizedCardOptions.find(card => card.card_number === values.card_number)?.enable_defaults && 
+                               memoizedCardOptions.find(card => card.card_number === values.card_number)?.default_tax_rate?.toString() === values.tax_rate)}
                 >
-                  <option value="">Select Tax Rate...</option>
-                  {values.pos_type && TAX_MDR_RATES[values.pos_type as keyof typeof TAX_MDR_RATES]?.map((rate, index) => (
-                    <option key={index} value={rate.tax}>
-                      {rate.tax}%
-                    </option>
+                  <option value="">Select Tax Rate</option>
+                  {values.pos_type && getAvailableTaxRates(values.pos_type).map(rate => (
+                    <option key={rate} value={rate}>{rate}%</option>
                   ))}
                 </select>
+
               </div>
 
               {/* Tax Amount Field */}
@@ -537,20 +920,34 @@ export default function TransactionFormModal({
 
               {/* MDR % Field */}
               <div className="mb-4">
-                <label className="block text-xs text-gray-400 mb-1">MDR %</label>
-                <select
+                <label className="block text-xs text-gray-400 mb-1">
+                  MDR %
+                  {values.mdr_amount && memoizedCardOptions.find(card => card.card_number === values.card_number)?.enable_defaults && 
+                   memoizedCardOptions.find(card => card.card_number === values.card_number)?.default_mdr_rate?.toString() === values.mdr_amount && (
+                    <span className="ml-2 text-xs text-blue-400">(Auto-filled from card defaults)</span>
+                  )}
+                  {values.mdr_amount && values.mdr_amount === SYSTEM_DEFAULTS.MDR_RATE.toString() && 
+                   !memoizedCardOptions.find(card => card.card_number === values.card_number)?.enable_defaults && (
+                    <span className="ml-2 text-xs text-green-400">(System default)</span>
+                  )}
+                  {values.mdr_amount && values.mdr_amount !== SYSTEM_DEFAULTS.MDR_RATE.toString() && 
+                   !memoizedCardOptions.find(card => card.card_number === values.card_number)?.enable_defaults && 
+                   calculateMDRRate(values.pos_type, values.tax_rate)?.toString() === values.mdr_amount && (
+                    <span className="ml-2 text-xs text-blue-400">(Auto-calculated from POS Type + Tax Rate)</span>
+                  )}
+                </label>
+                <input
+                  type="number"
                   value={values.mdr_amount}
                   onChange={(e) => handleChange('mdr_amount', e.target.value)}
                   className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-                  disabled={!values.pos_type}
-                >
-                  <option value="">Select MDR %...</option>
-                  {values.pos_type && TAX_MDR_RATES[values.pos_type as keyof typeof TAX_MDR_RATES]?.map((rate, index) => (
-                    <option key={index} value={rate.mdr}>
-                      {rate.mdr}%
-                    </option>
-                  ))}
-                </select>
+                  readOnly={!!(values.mdr_amount && memoizedCardOptions.find(card => card.card_number === values.card_number)?.enable_defaults && 
+                               memoizedCardOptions.find(card => card.card_number === values.card_number)?.default_mdr_rate?.toString() === values.mdr_amount)}
+                  placeholder="System default, card defaults, or auto-calculated from POS Type + Tax Rate"
+                  step="0.01"
+                  min="0"
+                  max="100"
+                />
               </div>
 
               {/* MDR Charge Amount Field */}

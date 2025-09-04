@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { User, CreditCard, FileText, Receipt, Building, MapPin, Phone, Mail, Calendar } from "lucide-react";
 import PaymentModal from "./PaymentModal";
 
@@ -15,6 +16,7 @@ export default function CustomerViewModal({
   onClose,
   customer,
 }: CustomerViewModalProps) {
+  const router = useRouter();
   const [customerData, setCustomerData] = useState<any>(null);
   const [taxDetails, setTaxDetails] = useState<any[]>([]);
   const [identityDocuments, setIdentityDocuments] = useState<any[]>([]);
@@ -447,7 +449,10 @@ export default function CustomerViewModal({
                   </h4>
                   {transactions.length > 5 && (
                     <button
-                      onClick={() => window.open(`/dashboard/customer-transactions/${customer?.id}`, '_blank')}
+                      onClick={() => {
+                        onClose(); // Close the modal first
+                        router.push(`/dashboard/customer-transactions/${customer?.id}`);
+                      }}
                       className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
                     >
                       View All

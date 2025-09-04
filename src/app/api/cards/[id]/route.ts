@@ -116,7 +116,10 @@ export async function PATCH(
     // Card number uniqueness is enforced at the database level with UNIQUE constraint
 
     // Build update query - only update fields that have actually changed
-    const allowedFields = ['bank_name', 'card_type', 'card_name', 'card_number', 'due_date'];
+    const allowedFields = [
+      'bank_name', 'card_type', 'card_name', 'card_number', 'due_date',
+      'enable_defaults', 'default_pos_type', 'custom_pos_type', 'default_tax_rate', 'default_mdr_rate'
+    ];
     const updates: string[] = [];
     const values: unknown[] = [];
     let paramIndex = 1;

@@ -10,37 +10,39 @@ if (!connectionString) {
   process.exit(1);
 }
 
+// Get migration file from command line argument
+const migrationFile = process.argv[2];
+if (!migrationFile) {
+  console.error('Usage: node run-migration.js <migration-file>');
+  console.error('Example: node run-migration.js migrations/add_card_default_fields.sql');
+  process.exit(1);
+}
+
 const pool = new Pool({ connectionString });
 
 async function runMigration() {
   try {
-    console.log('Running migration: add_updated_at_to_customers.sql');
+    console.log(`Running migration: ${migrationFile}`);
     
-    const migrationPath = path.join(__dirname, '..', 'migrations', 'add_updated_at_to_customers.sql');
+    const migrationPath = path.join(__dirname, '..', migrationFile);
+    
+    // Check if migration file exists
+    if (!fs.existsSync(migrationPath)) {
+      console.error(`Migration file not found: ${migrationPath}`);
+      process.exit(1);
+    }
+    
     const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
     
     await pool.query(migrationSQL);
     console.log('Migration completed successfully!');
-    
-    // Test if the column was added
-    const result = await pool.query(`
-      SELECT column_name 
-      FROM information_schema.columns 
-      WHERE table_name = 'customers' AND column_name = 'updated_at'
-    `);
-    
-    if (result.rows.length > 0) {
-      console.log('✅ updated_at column added successfully to customers table');
-    } else {
-      console.log('❌ updated_at column was not added');
-    }
     
   } catch (error) {
     console.error('Migration failed:', error.message);
     
     // If the column already exists, it's OK
     if (error.message.includes('already exists')) {
-      console.log('✅ updated_at column already exists');
+      console.log('✅ Fields already exist');
     }
   } finally {
     await pool.end();

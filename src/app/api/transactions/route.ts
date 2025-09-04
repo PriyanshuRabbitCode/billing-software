@@ -223,20 +223,57 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Auto-fill default values from card if not provided
+    let finalPosType = pos_type;
+    let finalTaxRate = tax_rate;
+    let finalMdrRate = mdr_amount;
+    
+    if (withdraw > 0 && card_number && (!finalPosType || !finalTaxRate || !finalMdrRate)) {
+      try {
+        // Get card details to check for default values
+        const { rows: cardDetails } = await query(
+          'SELECT enable_defaults, default_pos_type, default_tax_rate, default_mdr_rate FROM card_details WHERE card_number = $1',
+          [card_number]
+        );
+        
+        if (cardDetails.length > 0 && cardDetails[0].enable_defaults) {
+          const card = cardDetails[0];
+          
+          // Auto-fill POS type if not provided
+          if (!finalPosType && card.default_pos_type) {
+            finalPosType = card.default_pos_type;
+          }
+          
+          // Auto-fill tax rate if not provided
+          if (!finalTaxRate && card.default_tax_rate) {
+            finalTaxRate = card.default_tax_rate.toString();
+          }
+          
+          // Auto-fill MDR rate if not provided
+          if (!finalMdrRate && card.default_mdr_rate) {
+            finalMdrRate = card.default_mdr_rate.toString();
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to fetch card defaults:', error);
+        // Don't fail the transaction if card defaults can't be fetched
+      }
+    }
+
     // Calculate tax amount, MDR charge amount, and profit amount if not provided
     let finalTaxAmount = tax_amount;
     let finalMdrChargeAmount = mdr_charge_amount;
     let finalProfitAmount = profit_amount;
 
-    if (withdraw > 0 && pos_type && tax_rate && mdr_amount) {
+    if (withdraw > 0 && finalPosType && finalTaxRate && finalMdrRate) {
       // Calculate Tax Amount: (Tax Rate % × Withdraw Amount) / 100
       if (!finalTaxAmount) {
-        finalTaxAmount = (parseFloat(tax_rate) * withdraw) / 100;
+        finalTaxAmount = (parseFloat(finalTaxRate) * withdraw) / 100;
       }
       
       // Calculate MDR Charge Amount: (MDR % × Withdraw Amount) / 100
       if (!finalMdrChargeAmount) {
-        finalMdrChargeAmount = (parseFloat(mdr_amount) * withdraw) / 100;
+        finalMdrChargeAmount = (parseFloat(finalMdrRate) * withdraw) / 100;
       }
       
       // Calculate Profit Amount: Tax Amount - MDR Charge Amount
@@ -289,8 +326,8 @@ export async function POST(request: NextRequest) {
     
     const { rows } = await query(insertQuery, [
       customer_id, card_number, card_name, deposit_amount, withdraw_amount,
-      payable_amount, add_tax_to_withdraw, pos_type, tax_rate, finalTaxAmount,
-      mdr_amount, finalMdrChargeAmount, finalProfitAmount, finalPendingAmount, finalStatus
+      payable_amount, add_tax_to_withdraw, finalPosType, finalTaxRate, finalTaxAmount,
+      finalMdrRate, finalMdrChargeAmount, finalProfitAmount, finalPendingAmount, finalStatus
     ]);
 
     return NextResponse.json({

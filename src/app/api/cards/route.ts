@@ -11,6 +11,10 @@ interface CardWithRelations {
   card_name: string;
   card_number: string;
   due_date: string;
+  enable_defaults?: boolean;
+  default_pos_type?: string;
+  default_tax_rate?: number;
+  default_mdr_rate?: number;
   created_at: string;
   updated_at: string;
   // Relational data (when include=customer)
@@ -153,7 +157,19 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { customer_id, bank_name, card_type, card_name, card_number, due_date } = body;
+    const { 
+      customer_id, 
+      bank_name, 
+      card_type, 
+      card_name, 
+      card_number, 
+      due_date,
+      enable_defaults,
+      default_pos_type,
+      custom_pos_type,
+      default_tax_rate,
+      default_mdr_rate
+    } = body;
 
     // Validate required fields
     if (!customer_id || !bank_name || !card_type || !card_name) {
@@ -193,12 +209,16 @@ export async function POST(request: NextRequest) {
     const cleanCardNumber = card_number ? card_number.replace(/\s/g, '') : null;
     
     const insertQuery = `
-      INSERT INTO card_details (customer_id, bank_name, card_type, card_name, card_number, due_date)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO card_details (
+        customer_id, bank_name, card_type, card_name, card_number, due_date,
+        enable_defaults, default_pos_type, custom_pos_type, default_tax_rate, default_mdr_rate
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *
     `;
     const { rows } = await query(insertQuery, [
-      customer_id, bank_name, card_type, card_name, cleanCardNumber, due_date
+      customer_id, bank_name, card_type, card_name, cleanCardNumber, due_date,
+      enable_defaults || false, default_pos_type || null, custom_pos_type || null, default_tax_rate || null, default_mdr_rate || null
     ]);
 
     return NextResponse.json({

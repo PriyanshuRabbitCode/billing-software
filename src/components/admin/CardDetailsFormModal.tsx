@@ -51,6 +51,8 @@ export default function CardDetailsFormModal({
   const schema = schemas.card_details;
   const fields = schema.fields;
 
+
+
   // Update available card names based on selected bank and type
   const updateAvailableCards = useCallback((bankName: string, cardType: string) => {
     console.log('updateAvailableCards called with:', { bankName, cardType });
@@ -171,6 +173,8 @@ export default function CardDetailsFormModal({
         }
       });
       console.log('Setting form values:', v);
+      console.log('Initial values received:', initial);
+      console.log('Fields from schema:', fields.map(f => f.name));
       setValues(v);
       
       // Update available cards if bank and type are set
@@ -256,6 +260,11 @@ export default function CardDetailsFormModal({
       e.card_name = "Selected card is not valid for the chosen bank and type";
     }
     
+    // Validate custom POS Type when "Custom" is selected
+    if (values.enable_defaults && values.default_pos_type === "Custom" && !values.custom_pos_type) {
+      e.custom_pos_type = "Custom POS Type is required when 'Custom' is selected";
+    }
+    
     // Validate card number format if provided
     if (values.card_number) {
       // Remove spaces and check if it's a valid card number format
@@ -290,6 +299,10 @@ export default function CardDetailsFormModal({
       }
       
       console.log('Submitting values:', values);
+      console.log('enable_defaults value:', values.enable_defaults);
+      console.log('default_pos_type value:', values.default_pos_type);
+      console.log('default_tax_rate value:', values.default_tax_rate);
+      console.log('default_mdr_rate value:', values.default_mdr_rate);
       
       // Create a copy of values to avoid reference issues
       const valuesToSubmit = { ...values };
@@ -455,6 +468,95 @@ export default function CardDetailsFormModal({
               className="bg-gray-800 border border-gray-700 rounded px-3 py-2"
             />
           </div>
+        </div>
+
+        {/* Default POS/Tax/MDR Section */}
+        <div className="mt-6 border-t border-gray-700 pt-4">
+          <div className="flex items-center gap-2 mb-4">
+            <input
+              type="checkbox"
+              id="enable_defaults"
+              checked={(values.enable_defaults as boolean) ?? false}
+              onChange={(e) => handleChange('enable_defaults', e.target.checked)}
+              className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
+            />
+            <label htmlFor="enable_defaults" className="text-sm text-gray-300 font-medium">
+              Enable default POS/Tax/MDR for this card
+            </label>
+          </div>
+
+          {/* Conditional fields - only show when checkbox is checked */}
+          {(values.enable_defaults as boolean) && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-800 rounded-lg border border-gray-700">
+              <h4 className="text-sm text-blue-400 font-medium md:col-span-3 mb-3">
+                Default Transaction Values
+              </h4>
+              
+              {/* Default POS Type */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-400">Default POS Type</label>
+                <select
+                  value={(values.default_pos_type as string) ?? ""}
+                  onChange={(e) => handleChange('default_pos_type', e.target.value)}
+                  className="bg-gray-700 border border-gray-600 rounded px-3 py-2"
+                >
+                  <option value="">Select POS Type</option>
+                  <option value="MP">MP</option>
+                  <option value="PH">PH</option>
+                  <option value="MOS">MOS</option>
+                  <option value="Custom">Custom</option>
+                </select>
+                
+                {/* Custom POS Type Input - only show when "Custom" is selected */}
+                {values.default_pos_type === "Custom" && (
+                  <div>
+                    <input
+                      type="text"
+                      value={(values.custom_pos_type as string) ?? ""}
+                      onChange={(e) => handleChange('custom_pos_type', e.target.value)}
+                      placeholder="Enter custom POS Type"
+                      className={`bg-gray-700 border rounded px-3 py-2 mt-2 w-full ${
+                        errors.custom_pos_type ? 'border-red-500' : 'border-gray-600'
+                      }`}
+                    />
+                    {errors.custom_pos_type && (
+                      <div className="text-xs text-red-400 mt-1">{errors.custom_pos_type}</div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Default Tax Rate */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-400">Default Tax Rate %</label>
+                <input
+                  type="number"
+                  value={(values.default_tax_rate as string) ?? ""}
+                  onChange={(e) => handleChange('default_tax_rate', e.target.value)}
+                  placeholder="e.g., 2.5"
+                  step="0.01"
+                  min="0"
+                  max="100"
+                  className="bg-gray-700 border border-gray-600 rounded px-3 py-2"
+                />
+              </div>
+
+              {/* Default MDR Rate */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-400">Default MDR %</label>
+                <input
+                  type="number"
+                  value={(values.default_mdr_rate as string) ?? ""}
+                  onChange={(e) => handleChange('default_mdr_rate', e.target.value)}
+                  placeholder="e.g., 2.0"
+                  step="0.01"
+                  min="0"
+                  max="100"
+                  className="bg-gray-700 border border-gray-600 rounded px-3 py-2"
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="mt-6 flex justify-end gap-3">
