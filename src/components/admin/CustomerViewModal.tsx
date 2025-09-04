@@ -27,6 +27,7 @@ export default function CustomerViewModal({
   const [loading, setLoading] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedCard, setSelectedCard] = useState<any | null>(null);
+  const [showFullCardNumbers, setShowFullCardNumbers] = useState(false);
 
   useEffect(() => {
     console.log('CustomerViewModal: open =', open, 'customer =', customer);
@@ -321,7 +322,15 @@ export default function CustomerViewModal({
                 {/* Card Pending Amounts */}
                 {cardPendingAmounts.length > 0 && (
                   <div className="mb-6">
-                    <h5 className="text-md font-semibold mb-3 text-yellow-400">Card Pending Amounts</h5>
+                    <div className="flex items-center justify-between mb-3">
+                      <h5 className="text-md font-semibold text-yellow-400">Card Pending Amounts</h5>
+                      <button
+                        onClick={() => setShowFullCardNumbers(prev => !prev)}
+                        className="px-2 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+                      >
+                        {showFullCardNumbers ? 'Hide' : 'Show'} Full Card Numbers
+                      </button>
+                    </div>
                     <div className="overflow-x-auto">
                       <table className="min-w-full text-sm">
                         <thead className="bg-gray-700/50">
@@ -337,7 +346,10 @@ export default function CustomerViewModal({
                           {cardPendingAmounts.map((cardPending, index) => (
                             <tr key={index} className="border-t border-gray-700">
                               <td className="px-4 py-2 font-mono">
-                                **** **** **** {getLastFourDigits(cardPending.card_number)}
+                                {showFullCardNumbers 
+                                  ? (cardPending.card_number || "—")
+                                  : (cardPending.card_number ? `**** **** **** ${getLastFourDigits(cardPending.card_number)}` : "—")
+                                }
                               </td>
                               <td className="px-4 py-2">{cardPending.card_name || "—"}</td>
                               <td className="px-4 py-2 font-semibold text-green-400">
