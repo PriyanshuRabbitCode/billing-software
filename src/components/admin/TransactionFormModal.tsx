@@ -859,6 +859,9 @@ export default function TransactionFormModal({
                     !memoizedCardOptions.find(card => card.card_number === values.card_number)?.default_pos_type) && (
                     <span className="ml-2 text-xs text-green-400">(System default)</span>
                   )}
+                  {values.pos_type && values.pos_type !== "" && values.pos_type !== "MP" && values.pos_type !== "PH" && values.pos_type !== "MOS" && values.pos_type !== "Custom" && (
+                    <span className="ml-2 text-xs text-blue-400">(Custom from card: {values.pos_type})</span>
+                  )}
                 </label>
                 <select
                   value={values.pos_type}
@@ -866,6 +869,10 @@ export default function TransactionFormModal({
                   className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
                 >
                   <option value="">Select POS Type</option>
+                  {/* Always show the current POS Type first if it's set (for custom card defaults) */}
+                  {values.pos_type && values.pos_type !== "" && values.pos_type !== "MP" && values.pos_type !== "PH" && values.pos_type !== "MOS" && values.pos_type !== "Custom" && (
+                    <option key={values.pos_type} value={values.pos_type}>{values.pos_type} (Custom from Card)</option>
+                  )}
                   <option value="MP">MP (Default)</option>
                   <option value="PH">PH</option>
                   <option value="MOS">MOS</option>
@@ -881,6 +888,9 @@ export default function TransactionFormModal({
                   {values.tax_rate && memoizedCardOptions.find(card => card.card_number === values.card_number)?.enable_defaults && 
                    memoizedCardOptions.find(card => card.card_number === values.card_number)?.default_tax_rate?.toString() === values.tax_rate && (
                     <span className="ml-2 text-xs text-blue-400">(Auto-filled from card defaults)</span>
+                  )}
+                  {values.tax_rate && values.tax_rate !== "" && (
+                    <span className="ml-2 text-xs text-green-400">(Current: {values.tax_rate}%)</span>
                   )}
                   {!values.tax_rate && (
                     <span className="ml-2 text-xs text-yellow-400">(Manual selection required)</span>
@@ -899,9 +909,17 @@ export default function TransactionFormModal({
                                memoizedCardOptions.find(card => card.card_number === values.card_number)?.default_tax_rate?.toString() === values.tax_rate)}
                 >
                   <option value="">Select Tax Rate</option>
-                  {values.pos_type && getAvailableTaxRates(values.pos_type).map(rate => (
-                    <option key={rate} value={rate}>{rate}%</option>
-                  ))}
+                  {/* Always show the current tax rate first if it's set (for custom card defaults) */}
+                  {values.tax_rate && values.tax_rate !== "" && (
+                    <option key={values.tax_rate} value={values.tax_rate}>{values.tax_rate}%</option>
+                  )}
+                  {/* Show available tax rates for the selected POS Type */}
+                  {values.pos_type && getAvailableTaxRates(values.pos_type)
+                    .filter(rate => rate !== values.tax_rate) // Don't duplicate the current value
+                    .map(rate => (
+                      <option key={rate} value={rate}>{rate}%</option>
+                    ))
+                  }
                 </select>
 
               </div>
