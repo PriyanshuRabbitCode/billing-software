@@ -124,8 +124,8 @@ export default function TransactionFormModal({
 
   // Handle field change
   const handleChange = useCallback((name: string, value: any) => {
-    console.log(`handleChange called: ${name} = ${value}`);
-    console.log(`Previous values:`, values);
+    console.log(`🔄 handleChange called: ${name} = ${value}`);
+    console.log(`📝 Previous values:`, values);
     
     setValues(prev => {
       const newValues = { ...prev, [name]: value };
@@ -138,10 +138,20 @@ export default function TransactionFormModal({
         }
       }
       
-      console.log(`New values after ${name} change:`, newValues);
+      // Special handling for Tax Rate changes
+      if (name === 'tax_rate') {
+        console.log('💰 Tax Rate changed to:', value);
+        console.log('🎯 Current POS Type:', newValues.pos_type);
+        if (newValues.pos_type) {
+          const calculatedMDR = calculateMDRRate(newValues.pos_type, value);
+          console.log('🧮 Calculated MDR for new Tax Rate:', calculatedMDR);
+        }
+      }
+      
+      console.log(`✅ New values after ${name} change:`, newValues);
       return newValues;
     });
-  }, [memoizedCardOptions, values]);
+  }, [memoizedCardOptions, values, calculateMDRRate]);
 
   // Initialize form values
   useEffect(() => {
@@ -533,30 +543,42 @@ export default function TransactionFormModal({
     }
   }, [values.pos_type, values.card_number, memoizedCardOptions]);
 
-  // Auto-calculate MDR Rate when POS Type or Tax Rate changes (only for manual user changes)
+  // Auto-calculate MDR Rate when POS Type or Tax Rate changes
   useEffect(() => {
+    console.log('🎯 MDR Calculation Effect triggered:', {
+      pos_type: values.pos_type,
+      tax_rate: values.tax_rate,
+      has_both: !!(values.pos_type && values.tax_rate)
+    });
+    
     if (values.pos_type && values.tax_rate) {
       const calculatedMDR = calculateMDRRate(values.pos_type, values.tax_rate);
       
       if (calculatedMDR !== null) {
-        // Only update MDR if it's not from card defaults AND user is manually changing values
-        const selectedCard = memoizedCardOptions.find(card => card.card_number === values.card_number);
-        const isFromCardDefaults = selectedCard?.enable_defaults && 
-                                 typeof selectedCard.default_mdr_rate === 'number' &&
-                                 selectedCard.default_mdr_rate.toString() === values.mdr_amount;
+        console.log('🔄 MDR Auto-calculation triggered:', {
+          pos_type: values.pos_type,
+          tax_rate: values.tax_rate,
+          calculated_mdr: calculatedMDR,
+          current_mdr: values.mdr_amount
+        });
         
-        // Only auto-calculate if user is manually changing values (not during initial card selection)
-        // Also check if this is not from card defaults
-        if (!isFromCardDefaults && 
-            values.mdr_amount !== SYSTEM_DEFAULTS.MDR_RATE.toString()) {
-          setValues(prev => ({
+        // Always update MDR when POS Type or Tax Rate changes
+        // This ensures MDR stays in sync with the selected combination
+        setValues(prev => {
+          console.log('📝 Updating MDR from', prev.mdr_amount, 'to', calculatedMDR.toString());
+          return {
             ...prev,
             mdr_amount: calculatedMDR.toString()
-          }));
-        }
+          };
+        });
+      } else {
+        console.log('❌ No MDR mapping found for:', {
+          pos_type: values.pos_type,
+          tax_rate: values.tax_rate
+        });
       }
     }
-  }, [values.pos_type, values.tax_rate, values.card_number, memoizedCardOptions, calculateMDRRate]);
+  }, [values.pos_type, values.tax_rate, calculateMDRRate]);
 
   // Update payable amount when withdraw amount or tax checkbox changes
   useEffect(() => {
@@ -818,6 +840,23 @@ export default function TransactionFormModal({
           {/* Withdraw Transaction Section */}
           <div className="border-2 border-green-500 rounded-lg p-4 bg-gray-800">
             <h4 className="text-green-400 font-semibold mb-4 text-center">Withdraw Transaction Details</h4>
+            
+            {/* Mode Indicator */}
+            {values.card_number && (
+              <div className="mb-4 p-3 rounded-lg bg-gray-700 border border-gray-600">
+                {memoizedCardOptions.find(card => card.card_number === values.card_number)?.enable_defaults ? (
+                  <div className="flex items-center text-blue-400 text-sm">
+                    <span className="mr-2">🔄</span>
+                    <span>Auto-fill Mode: Using card defaults for POS Type, Tax Rate %, and MDR %</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center text-yellow-400 text-sm">
+                    <span className="mr-2">✋</span>
+                    <span>Manual Mode: Select POS Type and Tax Rate % manually, MDR % will be auto-calculated</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Payable Amount Field */}
@@ -862,6 +901,9 @@ export default function TransactionFormModal({
                   {values.pos_type && values.pos_type !== "" && values.pos_type !== "MP" && values.pos_type !== "PH" && values.pos_type !== "MOS" && values.pos_type !== "Custom" && (
                     <span className="ml-2 text-xs text-blue-400">(Custom from card: {values.pos_type})</span>
                   )}
+                  {values.card_number && !memoizedCardOptions.find(card => card.card_number === values.card_number)?.enable_defaults && (
+                    <span className="ml-2 text-xs text-yellow-400">(Manual selection required)</span>
+                  )}
                 </label>
                 <select
                   value={values.pos_type}
@@ -876,7 +918,10 @@ export default function TransactionFormModal({
                   <option value="MP">MP (Default)</option>
                   <option value="PH">PH</option>
                   <option value="MOS">MOS</option>
-                  <option value="Custom">Custom (Use Card Defaults)</option>
+                  {/* Only show "Custom" option if the selected card has enable_defaults = true */}
+                  {values.card_number && memoizedCardOptions.find(card => card.card_number === values.card_number)?.enable_defaults && (
+                    <option value="Custom">Custom (Use Card Defaults)</option>
+                  )}
                 </select>
 
               </div>
@@ -899,6 +944,9 @@ export default function TransactionFormModal({
                     <div className="text-xs text-gray-500 mt-1">
                       Available for {values.pos_type}: {getAvailableTaxRates(values.pos_type).join(', ')}%
                     </div>
+                  )}
+                  {values.card_number && !memoizedCardOptions.find(card => card.card_number === values.card_number)?.enable_defaults && (
+                    <span className="ml-2 text-xs text-yellow-400">(Manual selection required)</span>
                   )}
                 </label>
                 <select
