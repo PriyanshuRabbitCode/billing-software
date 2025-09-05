@@ -74,6 +74,11 @@ export default function TransactionFormModal({
     default_mdr_rate?: number;
   }>>([]);
   const [initialCustomerName, setInitialCustomerName] = useState<string>("");
+  const [creditInfo, setCreditInfo] = useState<{
+    credit_allowed: boolean;
+    credit_limit: number;
+    current_pending: number;
+  } | null>(null);
 
   // MDR Rate mapping based on POS Type and Tax Rate
   const MDR_MAPPING = {
@@ -208,12 +213,12 @@ export default function TransactionFormModal({
           setInitialCustomerName("");
         }
       } else {
-          setInitialCustomerName("");
-        }
+        setInitialCustomerName("");
       }
-      
-      loadInitialCustomerName();
-    }, [initial?.customer_id, open]);
+    }
+    
+    loadInitialCustomerName();
+  }, [initial?.customer_id, open]);
 
   // Debug: Log when values change
   useEffect(() => {
@@ -235,6 +240,47 @@ export default function TransactionFormModal({
       mdr_amount_length: values.mdr_amount?.length || 0
     });
   }, [values.customer_id, values.card_number, values.pos_type, values.tax_rate, values.mdr_amount]);
+
+  // Load credit information when customer changes
+  useEffect(() => {
+    async function loadCreditInfo() {
+      if (!values.customer_id) {
+        setCreditInfo(null);
+        return;
+      }
+      
+      try {
+        // Get customer's account information
+        const accountRes = await fetch(`/api/accounts?customer_id=${values.customer_id}`);
+        const accountResult = await accountRes.json();
+        const accountData = accountResult.data?.[0];
+        
+        if (accountData) {
+          // Get current total pending amount for this customer
+          const transactionsRes = await fetch(`/api/transactions?customer_id=${values.customer_id}`);
+          const transactionsResult = await transactionsRes.json();
+          const transactions = transactionsResult.data || [];
+          
+          const currentPending = transactions.reduce((sum: number, tx: any) => {
+            return sum + (parseFloat(tx.pending_amount) || 0);
+          }, 0);
+          
+          setCreditInfo({
+            credit_allowed: accountData.credit_allowed || false,
+            credit_limit: parseFloat(accountData.credit_limit) || 0,
+            current_pending: currentPending
+          });
+        } else {
+          setCreditInfo(null);
+        }
+      } catch (error) {
+        console.error('Error loading credit info:', error);
+        setCreditInfo(null);
+      }
+    }
+    
+    loadCreditInfo();
+  }, [values.customer_id]);
 
   // Load card options when customer changes
   useEffect(() => {
@@ -282,7 +328,7 @@ export default function TransactionFormModal({
         
         setCardOptions(validCards);
         
-                if (validCards.length > 0 && !values.card_number) {
+        if (validCards.length > 0 && !values.card_number) {
           // Find the first card with custom defaults, or fall back to the first card
           const cardWithDefaults = validCards.find(card => card.enable_defaults) || validCards[0];
           const selectedCard = cardWithDefaults;
@@ -424,14 +470,14 @@ export default function TransactionFormModal({
       } else if (selectedCard && !selectedCard.enable_defaults) {
         // Card has no custom defaults - apply system defaults
         console.log('Applying system defaults...');
-        setValues(prev => ({
-          ...prev,
+          setValues(prev => ({
+            ...prev,
           pos_type: SYSTEM_DEFAULTS.POS_TYPE,
           tax_rate: '', // User must select manually
           mdr_amount: SYSTEM_DEFAULTS.MDR_RATE.toString() // Apply system default MDR
-        }));
+          }));
+        }
       }
-    }
   }, [values.card_number, memoizedCardOptions]);
 
   // Auto-fill fields when "Custom" POS Type is selected
@@ -658,6 +704,31 @@ export default function TransactionFormModal({
     }));
   }, [values.deposit_amount, values.withdraw_amount, values.tax_amount, values.add_tax_to_withdraw]);
 
+  // Calculate new total pending amount for credit limit validation
+  const calculateNewTotalPending = (): number => {
+    if (!creditInfo || !creditInfo.credit_allowed) {
+      return 0; // No credit limit to check
+    }
+    
+    const deposit = Number(values.deposit_amount) || 0;
+    const withdraw = Number(values.withdraw_amount) || 0;
+    const taxAmount = Number(values.tax_amount) || 0;
+    const addTax = values.add_tax_to_withdraw || false;
+    
+    // Calculate pending amount for this transaction
+    let transactionPendingAmount = 0;
+    if (addTax) {
+      // If tax is added to withdraw: Pending = Deposit - Withdraw
+      transactionPendingAmount = deposit - withdraw;
+    } else {
+      // If tax is not added to withdraw: Pending = (Deposit - Withdraw) + Tax Amount
+      transactionPendingAmount = (deposit - withdraw) + taxAmount;
+    }
+    
+    // Return new total pending amount
+    return creditInfo.current_pending + transactionPendingAmount;
+  };
+
   // Validate form
   const validateForm = (): { isValid: boolean; errors: string[] } => {
     const errors: string[] = [];
@@ -683,6 +754,31 @@ export default function TransactionFormModal({
     // Check if card is selected
     if (!values.card_number) {
       errors.push("Card selection is required");
+    }
+    
+    // Credit limit validation
+    if (creditInfo && creditInfo.credit_allowed && creditInfo.credit_limit > 0) {
+      const newTotalPending = calculateNewTotalPending();
+      if (creditInfo.current_pending > creditInfo.credit_limit) {
+        errors.push(`⚠️ Transaction Declined:
+This payment cannot be processed because your current pending transactions already exceed your credit limit.
+
+Credit Limit: ₹${creditInfo.credit_limit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+Current Pending Transactions: ₹${creditInfo.current_pending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+
+Please clear your pending dues before making new transactions.`);
+      } else if (newTotalPending > creditInfo.credit_limit) {
+        const transactionAmount = newTotalPending - creditInfo.current_pending;
+        errors.push(`⚠️ Transaction Declined:
+This payment cannot be processed because it would exceed your credit limit.
+
+Credit Limit: ₹${creditInfo.credit_limit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+Current Pending Transactions: ₹${creditInfo.current_pending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+This Transaction Amount: ₹${transactionAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+Resulting Total: ₹${newTotalPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (exceeds limit)
+
+Please try again with a lower amount or clear pending dues.`);
+      }
     }
     
     // Check if POS type and tax rate are provided when withdraw amount is present
@@ -751,6 +847,58 @@ export default function TransactionFormModal({
                   placeholder="Search customers by name, email, or phone..."
                   initialCustomerName={initialCustomerName}
                 />
+                
+                {/* Credit Limit Information */}
+                {creditInfo && creditInfo.credit_allowed && (
+                  <div className="mt-2 p-3 bg-gray-800 border border-gray-600 rounded-lg">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-300">Credit Information:</span>
+                      <span className={`font-medium ${
+                        creditInfo.current_pending > creditInfo.credit_limit * 0.8 
+                          ? 'text-yellow-400' 
+                          : 'text-green-400'
+                      }`}>
+                        ₹{creditInfo.current_pending.toFixed(2)} / ₹{creditInfo.credit_limit.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="mt-1 w-full bg-gray-700 rounded-full h-2">
+                      <div 
+                        className={`h-2 rounded-full ${
+                          creditInfo.current_pending > creditInfo.credit_limit * 0.8 
+                            ? 'bg-yellow-500' 
+                            : 'bg-green-500'
+                        }`}
+                        style={{ 
+                          width: `${Math.min((creditInfo.current_pending / creditInfo.credit_limit) * 100, 100)}%` 
+                        }}
+                      ></div>
+                    </div>
+                    {(() => {
+                      const newTotalPending = calculateNewTotalPending();
+                      if (creditInfo.current_pending > creditInfo.credit_limit) {
+                        return (
+                          <div className="mt-2 text-xs text-red-400">
+                            ⚠️ Current pending transactions already exceed credit limit
+                          </div>
+                        );
+                      } else if (newTotalPending > creditInfo.credit_limit) {
+                        const transactionAmount = newTotalPending - creditInfo.current_pending;
+                        return (
+                          <div className="mt-2 text-xs text-red-400">
+                            ⚠️ This transaction would exceed credit limit by ₹{(newTotalPending - creditInfo.credit_limit).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </div>
+                        );
+                      } else if (newTotalPending > creditInfo.credit_limit * 0.9) {
+                        return (
+                          <div className="mt-2 text-xs text-yellow-400">
+                            ⚠️ This transaction would use {(newTotalPending / creditInfo.credit_limit * 100).toFixed(1)}% of credit limit
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
+                )}
               </div>
 
               {/* Card Number Field */}

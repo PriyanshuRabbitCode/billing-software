@@ -223,6 +223,90 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Credit Limit Validation
+    try {
+      
+      // Get customer's account information (credit_allowed and credit_limit)
+      const { rows: accountInfo } = await query(
+        'SELECT credit_allowed, credit_limit FROM accounts WHERE customer_id = $1',
+        [customer_id]
+      );
+
+      if (accountInfo.length > 0) {
+        const { credit_allowed, credit_limit } = accountInfo[0];
+        
+        // Only check credit limit if credit is allowed and limit is set
+        const creditLimitNum = parseFloat(credit_limit);
+        
+        
+        if (credit_allowed && credit_limit && creditLimitNum > 0) {
+          // Calculate current total pending amount for this customer
+          const { rows: currentPending } = await query(
+            'SELECT COALESCE(SUM(pending_amount), 0) as total_pending FROM transactions WHERE customer_id = $1',
+            [customer_id]
+          );
+          
+          const currentTotalPending = parseFloat(currentPending[0]?.total_pending || 0);
+          
+          // Calculate what the new pending amount would be after this transaction
+          let transactionPendingAmount = 0;
+          if (add_tax_to_withdraw) {
+            // If tax is added to withdraw: Pending = Deposit - Withdraw
+            transactionPendingAmount = deposit - withdraw;
+          } else {
+            // If tax is not added to withdraw: Pending = (Deposit - Withdraw) + Tax Amount
+            const taxAmount = parseFloat(tax_amount || 0);
+            transactionPendingAmount = (deposit - withdraw) + taxAmount;
+          }
+          
+          // Calculate new total pending amount
+          const newTotalPending = currentTotalPending + transactionPendingAmount;
+          
+          
+          // Check if current total pending already exceeds credit limit
+          if (currentTotalPending > creditLimitNum) {
+            return NextResponse.json(
+              { 
+                success: false, 
+                error: `⚠️ Transaction Declined:
+This payment cannot be processed because your current pending transactions already exceed your credit limit.
+
+Credit Limit: ₹${creditLimitNum.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+Current Pending Transactions: ₹${currentTotalPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+
+Please clear your pending dues before making new transactions.` 
+              },
+              { status: 400 }
+            );
+          }
+          
+          // Check if new transaction would exceed credit limit
+          if (newTotalPending > creditLimitNum) {
+            const transactionAmount = newTotalPending - currentTotalPending;
+            return NextResponse.json(
+              { 
+                success: false, 
+                error: `⚠️ Transaction Declined:
+This payment cannot be processed because it would exceed your credit limit.
+
+Credit Limit: ₹${creditLimitNum.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+Current Pending Transactions: ₹${currentTotalPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+This Transaction Amount: ₹${transactionAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+Resulting Total: ₹${newTotalPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (exceeds limit)
+
+Please try again with a lower amount or clear pending dues.` 
+              },
+              { status: 400 }
+            );
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to validate credit limit:', error);
+      // Don't fail the transaction if credit limit validation fails
+      // This ensures backward compatibility if accounts table doesn't exist or has issues
+    }
+
     // Auto-fill default values from card if not provided
     let finalPosType = pos_type;
     let finalTaxRate = tax_rate;
