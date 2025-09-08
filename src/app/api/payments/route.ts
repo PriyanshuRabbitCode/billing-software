@@ -24,14 +24,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get current pending amount and customer_id for the card
+    // Get current pending amount for the card (across all customers)
     const { rows: pendingData } = await query(
       `SELECT 
-        COALESCE(SUM(pending_amount), 0) as total_pending,
-        customer_id
+        COALESCE(SUM(pending_amount), 0) as total_pending
        FROM transactions 
-       WHERE card_number = $1
-       GROUP BY customer_id`,
+       WHERE card_number = $1`,
       [cardNumber]
     );
 
@@ -43,7 +41,14 @@ export async function POST(request: NextRequest) {
     }
 
     const currentPending = parseFloat(pendingData[0]?.total_pending || '0');
-    const dbCustomerId = pendingData[0]?.customer_id;
+    
+    // Get the customer_id for this specific card from card_details table
+    const { rows: cardData } = await query(
+      'SELECT customer_id FROM card_details WHERE card_number = $1',
+      [cardNumber]
+    );
+    
+    const dbCustomerId = cardData.length > 0 ? cardData[0]?.customer_id : null;
     
     // Use provided customerId if available, otherwise use the one from database
     const customerId = requestCustomerId || dbCustomerId;
@@ -57,7 +62,10 @@ export async function POST(request: NextRequest) {
 
     if (amount > currentPending) {
       return NextResponse.json(
-        { success: false, error: 'Payment amount cannot exceed pending amount' },
+        { 
+          success: false, 
+          error: `Payment amount ₹${amount} cannot exceed pending amount ₹${currentPending}` 
+        },
         { status: 400 }
       );
     }

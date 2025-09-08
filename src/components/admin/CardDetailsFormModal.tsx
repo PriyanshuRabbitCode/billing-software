@@ -56,7 +56,6 @@ export default function CardDetailsFormModal({
   // Update available card names based on selected bank and type
   const updateAvailableCards = useCallback((bankName: string, cardType: string) => {
     console.log('updateAvailableCards called with:', { bankName, cardType });
-    console.log('Form is active:', isFormActive);
     
     if (!bankName || !cardType) {
       console.log('Missing bank name or card type, clearing available cards');
@@ -64,78 +63,48 @@ export default function CardDetailsFormModal({
       return;
     }
     
-    const cardOptions = schema.fields.find(f => f.name === 'card_name')?.enumValues || [];
-    console.log('Total card options available:', cardOptions.length);
+    // Get the card mapping from schema
+    const cardNameField = schema.fields.find(f => f.name === 'card_name');
+    const cardsByBank = (cardNameField as any)?.cardsByBank;
     
-    // More flexible filtering logic - be more inclusive to prevent valid cards from being filtered out
-    const filtered = cardOptions.filter(card => {
-      // Check if card type matches (Credit/Debit)
-      const typeMatch = card.toLowerCase().includes(cardType.toLowerCase());
-      
-      // If card type doesn't match, exclude it
-      if (!typeMatch) return false;
-      
-      // Special handling for common bank abbreviations and names
-      const bankAbbreviations: Record<string, string[]> = {
-        'State Bank of India': ['SBI', 'State', 'Bank'],
-        'HDFC Bank': ['HDFC', 'Bank'],
-        'ICICI Bank': ['ICICI', 'Bank'],
-        'Punjab National Bank': ['PNB', 'Punjab', 'National', 'Bank'],
-        'Bank of Baroda': ['BOB', 'Baroda', 'Bank'],
-        'Canara Bank': ['Canara', 'Bank'],
-        'Union Bank of India': ['Union', 'Bank'],
-        'Axis Bank': ['Axis', 'Bank'],
-        'Kotak Mahindra Bank': ['Kotak', 'Mahindra', 'Bank'],
-        'IndusInd Bank': ['IndusInd', 'Bank'],
-        'Yes Bank': ['Yes', 'Bank'],
-        'Federal Bank': ['Federal', 'Bank'],
-        'IDBI Bank': ['IDBI', 'Bank'],
-        'RBL Bank': ['RBL', 'Bank']
-      };
-      
-      const bankAbbrev = bankAbbreviations[bankName];
-      if (bankAbbrev) {
-        // Check if any bank abbreviation or word is in the card name
-        const hasAbbreviation = bankAbbrev.some(abbrev => 
-          card.toUpperCase().includes(abbrev.toUpperCase())
-        );
-        if (hasAbbreviation) return true;
-      }
-      
-      // Check if bank name has any common words with the card name
-      const bankWords = bankName.toLowerCase().split(' ').filter(word => word.length > 2);
-      const cardWords = card.toLowerCase().split(' ').filter(word => word.length > 2);
-      
-      // Check for common words between bank and card name
-      const hasCommonWords = bankWords.some(bankWord => 
-        cardWords.some(cardWord => 
-          cardWord.includes(bankWord) || bankWord.includes(cardWord)
-        )
-      );
-      
-      if (hasCommonWords) return true;
-      
-      // If no specific match found, be more permissive - include cards that might be valid
-      // This prevents over-filtering that could exclude legitimate card names
-      return true;
-    });
-    
-    console.log('Filtered cards:', filtered);
-    console.log('Filtered count:', filtered.length);
-    
-    // If we have a current card name selected and it's not in the filtered list,
-    // but the form is active (user is filling it out), don't clear the available cards
-    // This prevents the form from becoming unusable when the user has made selections
-    if (isFormActive && values.card_name && filtered.length === 0) {
-      console.log('Form is active and user has selected card name, keeping current available cards');
+    if (!cardsByBank) {
+      console.log('No cardsByBank mapping found, falling back to all cards');
+      const allCards = cardNameField?.enumValues || [];
+      setAvailableCards(allCards);
       return;
     }
     
-    setAvailableCards(filtered);
+    // Get the specific cards for this bank and card type
+    const bankCards = cardsByBank[bankName];
+    if (!bankCards) {
+      console.log('No cards found for bank:', bankName);
+      setAvailableCards([]);
+      return;
+    }
     
-    // Don't reset card name automatically - let user make the choice
-    // This prevents the form from clearing valid selections
-  }, [schema.fields, isFormActive, values.card_name]);
+    const typeCards = bankCards[cardType];
+    if (!typeCards) {
+      console.log('No cards found for bank + type:', { bankName, cardType });
+      setAvailableCards([]);
+      return;
+    }
+    
+    console.log('Filtered cards for', bankName, '+', cardType, ':', typeCards);
+    setAvailableCards(typeCards);
+    
+    // If current card name is not in the filtered list, clear it
+    if (values.card_name && !typeCards.includes(values.card_name as string)) {
+      console.log('Current card name not valid for this bank+type, clearing');
+      setValues(prev => ({ ...prev, card_name: '' }));
+    }
+  }, [schema.fields, values.card_name]);
+
+  // Update available cards when bank or type changes
+  useEffect(() => {
+    if (values.bank_name && values.card_type) {
+      updateAvailableCards(values.bank_name as string, values.card_type as string);
+    }
+  }, [values.bank_name, values.card_type, updateAvailableCards]);
 
   // Migration removed - no longer needed for form functionality
 
@@ -430,7 +399,7 @@ export default function CardDetailsFormModal({
               ))}
               {/* If we have a selected card name that's not in available cards, show it anyway */}
               {values.card_name && !availableCards.includes(values.card_name as string) && (
-                <option key={values.card_name} value={values.card_name}>
+                <option key={values.card_name as string} value={values.card_name as string}>
                   {values.card_name} (Custom)
                 </option>
               )}

@@ -63,6 +63,7 @@ export default function PaymentModal({
     }
 
     const amount = parseFloat(paidAmount);
+    
     if (amount > cardData.pending_amount) {
       setError(`Amount cannot be greater than pending amount (${formatCurrency(cardData.pending_amount)})`);
       return;

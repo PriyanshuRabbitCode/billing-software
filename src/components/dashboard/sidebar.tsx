@@ -8,7 +8,8 @@ import {
   FileText,
   Users,
   LogOut,
-  CreditCard
+  CreditCard,
+  BarChart3
 } from 'lucide-react';
 import { signOut } from '@/lib/auth';
 
@@ -32,6 +33,11 @@ const navItems = [
     title: 'Transactions',
     href: '/dashboard/transactions',
     icon: FileText,
+  },
+  {
+    title: 'Reports',
+    href: '/dashboard/reports',
+    icon: BarChart3,
   },
 ];
 

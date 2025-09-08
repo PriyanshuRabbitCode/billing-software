@@ -73,50 +73,305 @@ export const schemas: Record<string, TableSchema> = {
     table: "cards",
     title: "Card Details",
     fields: [
-      { name: "customer_id", label: "Customer", type: "select", required: true, relation: { table: "customers", valueField: "id", labelField: "full_name" } },
-      { name: "bank_name", label: "Bank Name", type: "enum", required: true, enumValues: [
-        "State Bank of India",
-        "HDFC Bank",
-        "ICICI Bank",
-        "Punjab National Bank",
-        "Bank of Baroda",
-        "Canara Bank",
-        "Union Bank of India",
-        "Axis Bank",
-        "Kotak Mahindra Bank",
-        "IndusInd Bank",
-        "Yes Bank",
-        "Federal Bank",
-        "IDBI Bank",
-        "RBL Bank"
-      ] },
-      { name: "card_type", label: "Card Type", type: "enum", required: true, enumValues: ["Credit Card", "Debit Card"] },
-      { name: "card_name", label: "Card Name", type: "enum", required: true, enumValues: [
-        // Credit Cards
-        "SBI SimplySAVE Credit Card",
-        "SBI SimplyCLICK Credit Card",
-        "HDFC Moneyback Credit Card",
-        "HDFC Regalia Credit Card",
-        "ICICI Coral Credit Card",
-        "ICICI Platinum Credit Card",
-        "Axis Neo Credit Card",
-        "Axis Magnus Credit Card",
-        "Kotak Royale Credit Card",
-        "Kotak Urbane Credit Card",
-        // Debit Cards
-        "SBI Classic Debit Card",
-        "SBI Global Debit Card",
-        "HDFC Premium Debit Card",
-        "HDFC International Debit Card",
-        "ICICI Coral Debit Card",
-        "ICICI Sapphiro Debit Card",
-        "Axis Visa Platinum Debit Card",
-        "Axis RuPay Platinum Debit Card",
-        "Kotak Classic Debit Card",
-        "Kotak Premium Debit Card"
-      ] },
-      { name: "card_number", label: "Card Number", type: "text", placeholder: "XXXX XXXX XXXX XXXX" },
-      { name: "due_date", label: "Due Date", type: "datetime" },
+      { 
+        name: "customer_id", 
+        label: "Customer", 
+        type: "select", 
+        required: true, 
+        relation: { table: "customers", valueField: "id", labelField: "full_name" } 
+      },
+      { 
+        name: "bank_name", 
+        label: "Bank Name", 
+        type: "enum", 
+        required: true, 
+        enumValues: [
+          "State Bank of India",
+          "HDFC Bank",
+          "ICICI Bank",
+          "Punjab National Bank",
+          "Bank of Baroda",
+          "Canara Bank",
+          "Union Bank of India",
+          "Axis Bank",
+          "Kotak Mahindra Bank",
+          "IndusInd Bank",
+          "Yes Bank",
+          "Federal Bank",
+          "IDBI Bank",
+          "RBL Bank"
+        ] 
+      },
+      { 
+        name: "card_type", 
+        label: "Card Type", 
+        type: "enum", 
+        required: true, 
+        enumValues: ["Credit Card", "Debit Card"] 
+      },
+      { 
+        name: "card_name", 
+        label: "Card Name", 
+        type: "enum", 
+        required: true, 
+        enumValues: [
+          // SBI
+          "SBI SimplySAVE Credit Card",
+          "SBI SimplyCLICK Credit Card",
+          "SBI Prime Credit Card",
+          "SBI Elite Credit Card",
+          "SBI Classic Debit Card",
+          "SBI Global Debit Card",
+          "SBI Platinum International Debit Card",
+
+          // HDFC
+          "HDFC Moneyback Credit Card",
+          "HDFC Regalia Credit Card",
+          "HDFC Diners Club Black Credit Card",
+          "HDFC Premium Debit Card",
+          "HDFC Millennia Debit Card",
+          "HDFC EasyShop Platinum Debit Card",
+
+          // ICICI
+          "ICICI Coral Credit Card",
+          "ICICI Platinum Chip Credit Card",
+          "ICICI Amazon Pay Credit Card",
+          "ICICI Coral Debit Card",
+          "ICICI Sapphiro Debit Card",
+          "ICICI Expressions Debit Card",
+
+          // Punjab National Bank (PNB)
+          "PNB Global Classic Credit Card",
+          "PNB Global Platinum Credit Card",
+          "PNB Classic Debit Card",
+          "PNB Gold Debit Card",
+
+          // Bank of Baroda (BOB)
+          "BOB Eterna Credit Card",
+          "BOB Select Credit Card",
+          "BOB Easy Debit Card",
+          "BOB Premium Debit Card",
+
+          // Canara Bank
+          "Canara Global Gold Credit Card",
+          "Canara Platinum Credit Card",
+          "Canara Classic Debit Card",
+          "Canara Platinum Debit Card",
+
+          // Union Bank of India
+          "Union Bank International Credit Card",
+          "Union Platinum Credit Card",
+          "Union Classic Debit Card",
+          "Union Premium Debit Card",
+
+          // Axis Bank
+          "Axis Neo Credit Card",
+          "Axis Magnus Credit Card",
+          "Axis Flipkart Credit Card",
+          "Axis Visa Platinum Debit Card",
+          "Axis RuPay Platinum Debit Card",
+          "Axis Priority Debit Card",
+
+          // Kotak Mahindra Bank
+          "Kotak Royale Signature Credit Card",
+          "Kotak Urbane Gold Credit Card",
+          "Kotak Classic Debit Card",
+          "Kotak Privy League Debit Card",
+
+          // IndusInd Bank
+          "IndusInd Platinum Aura Credit Card",
+          "IndusInd Iconia Credit Card",
+          "IndusInd International Classic Debit Card",
+          "IndusInd Titanium Debit Card",
+
+          // Yes Bank
+          "YES Prosperity Edge Credit Card",
+          "YES First Exclusive Credit Card",
+          "YES Prosperity Platinum Debit Card",
+          "YES EMV Platinum Debit Card",
+
+          // Federal Bank
+          "Federal Visa Classic Credit Card",
+          "Federal Platinum Credit Card",
+          "Federal Visa Signature Debit Card",
+          "Federal RuPay Premium Debit Card",
+
+          // IDBI Bank
+          "IDBI Aspire Platinum Credit Card",
+          "IDBI Royale Signature Credit Card",
+          "IDBI Classic Debit Card",
+          "IDBI Platinum Debit Card",
+
+          // RBL Bank
+          "RBL Platinum Maxima Credit Card",
+          "RBL ShopRite Credit Card",
+          "RBL Titanium First Debit Card",
+          "RBL Signature+ Debit Card"
+        ],
+        // Add card mapping for dynamic filtering
+        cardsByBank: {
+          "State Bank of India": {
+            "Credit Card": [
+              "SBI SimplySAVE Credit Card",
+              "SBI SimplyCLICK Credit Card", 
+              "SBI Prime Credit Card",
+              "SBI Elite Credit Card"
+            ],
+            "Debit Card": [
+              "SBI Classic Debit Card",
+              "SBI Global Debit Card",
+              "SBI Platinum International Debit Card"
+            ]
+          },
+          "HDFC Bank": {
+            "Credit Card": [
+              "HDFC Moneyback Credit Card",
+              "HDFC Regalia Credit Card",
+              "HDFC Diners Club Black Credit Card"
+            ],
+            "Debit Card": [
+              "HDFC Premium Debit Card",
+              "HDFC Millennia Debit Card",
+              "HDFC EasyShop Platinum Debit Card"
+            ]
+          },
+          "ICICI Bank": {
+            "Credit Card": [
+              "ICICI Coral Credit Card",
+              "ICICI Platinum Chip Credit Card",
+              "ICICI Amazon Pay Credit Card"
+            ],
+            "Debit Card": [
+              "ICICI Coral Debit Card",
+              "ICICI Sapphiro Debit Card",
+              "ICICI Expressions Debit Card"
+            ]
+          },
+          "Punjab National Bank": {
+            "Credit Card": [
+              "PNB Global Classic Credit Card",
+              "PNB Global Platinum Credit Card"
+            ],
+            "Debit Card": [
+              "PNB Classic Debit Card",
+              "PNB Gold Debit Card"
+            ]
+          },
+          "Bank of Baroda": {
+            "Credit Card": [
+              "BOB Eterna Credit Card",
+              "BOB Select Credit Card"
+            ],
+            "Debit Card": [
+              "BOB Easy Debit Card",
+              "BOB Premium Debit Card"
+            ]
+          },
+          "Canara Bank": {
+            "Credit Card": [
+              "Canara Global Gold Credit Card",
+              "Canara Platinum Credit Card"
+            ],
+            "Debit Card": [
+              "Canara Classic Debit Card",
+              "Canara Platinum Debit Card"
+            ]
+          },
+          "Union Bank of India": {
+            "Credit Card": [
+              "Union Bank International Credit Card",
+              "Union Platinum Credit Card"
+            ],
+            "Debit Card": [
+              "Union Classic Debit Card",
+              "Union Premium Debit Card"
+            ]
+          },
+          "Axis Bank": {
+            "Credit Card": [
+              "Axis Neo Credit Card",
+              "Axis Magnus Credit Card",
+              "Axis Flipkart Credit Card"
+            ],
+            "Debit Card": [
+              "Axis Visa Platinum Debit Card",
+              "Axis RuPay Platinum Debit Card",
+              "Axis Priority Debit Card"
+            ]
+          },
+          "Kotak Mahindra Bank": {
+            "Credit Card": [
+              "Kotak Royale Signature Credit Card",
+              "Kotak Urbane Gold Credit Card"
+            ],
+            "Debit Card": [
+              "Kotak Classic Debit Card",
+              "Kotak Privy League Debit Card"
+            ]
+          },
+          "IndusInd Bank": {
+            "Credit Card": [
+              "IndusInd Platinum Aura Credit Card",
+              "IndusInd Iconia Credit Card"
+            ],
+            "Debit Card": [
+              "IndusInd International Classic Debit Card",
+              "IndusInd Titanium Debit Card"
+            ]
+          },
+          "Yes Bank": {
+            "Credit Card": [
+              "YES Prosperity Edge Credit Card",
+              "YES First Exclusive Credit Card"
+            ],
+            "Debit Card": [
+              "YES Prosperity Platinum Debit Card",
+              "YES EMV Platinum Debit Card"
+            ]
+          },
+          "Federal Bank": {
+            "Credit Card": [
+              "Federal Visa Classic Credit Card",
+              "Federal Platinum Credit Card"
+            ],
+            "Debit Card": [
+              "Federal Visa Signature Debit Card",
+              "Federal RuPay Premium Debit Card"
+            ]
+          },
+          "IDBI Bank": {
+            "Credit Card": [
+              "IDBI Aspire Platinum Credit Card",
+              "IDBI Royale Signature Credit Card"
+            ],
+            "Debit Card": [
+              "IDBI Classic Debit Card",
+              "IDBI Platinum Debit Card"
+            ]
+          },
+          "RBL Bank": {
+            "Credit Card": [
+              "RBL Platinum Maxima Credit Card",
+              "RBL ShopRite Credit Card"
+            ],
+            "Debit Card": [
+              "RBL Titanium First Debit Card",
+              "RBL Signature+ Debit Card"
+            ]
+          }
+        }
+      },
+      { 
+        name: "card_number", 
+        label: "Card Number", 
+        type: "text", 
+        placeholder: "XXXX XXXX XXXX XXXX" 
+      },
+      { 
+        name: "due_date", 
+        label: "Due Date", 
+        type: "date" 
+      },
       { name: "enable_defaults", label: "Enable Defaults", type: "boolean" },
       { name: "default_pos_type", label: "Default POS Type", type: "enum", enumValues: ["MP", "PH", "MOS", "Custom"] },
       { name: "custom_pos_type", label: "Custom POS Type", type: "text" },

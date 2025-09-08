@@ -776,7 +776,7 @@ Credit Limit: ₹${creditInfo.credit_limit.toLocaleString('en-IN', { minimumFrac
 Current Pending Transactions: ₹${creditInfo.current_pending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
 This Transaction Amount: ₹${transactionAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
 Resulting Total: ₹${newTotalPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (exceeds limit)
-
+ 
 Please try again with a lower amount or clear pending dues.`);
       }
     }

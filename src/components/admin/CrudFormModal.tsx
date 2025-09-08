@@ -10,7 +10,8 @@ export type FieldType =
   | "select"
   | "enum"
   | "boolean"
-  | "datetime";
+  | "datetime"
+  | "date";
 
 export interface CrudField {
   name: string;
@@ -23,6 +24,11 @@ export interface CrudField {
     table: string;
     valueField: string;
     labelField: string;
+  };
+  cardsByBank?: {
+    [bankName: string]: {
+      [cardType: string]: string[];
+    };
   };
 }
 

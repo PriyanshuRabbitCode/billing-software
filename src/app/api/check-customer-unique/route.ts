@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
 
     // Check for uniqueness in customers table
     let checkQuery = '';
-    let queryParams = [];
+    let queryParams: any[] = [];
 
     if (field === 'email_id' || field === 'contact_no') {
       // Check in customers table

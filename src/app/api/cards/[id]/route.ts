@@ -129,7 +129,7 @@ export async function PATCH(
         let processedValue = value;
         
         // Clean card number by removing spaces if it's being updated
-        if (key === 'card_number' && value !== existingCards[0][key]) {
+        if (key === 'card_number' && value && typeof value === 'string' && value !== existingCards[0][key]) {
           processedValue = value.replace(/\s/g, '');
         }
         

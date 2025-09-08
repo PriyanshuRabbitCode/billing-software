@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { User, CreditCard, FileText, Receipt, Building, MapPin, Phone, Mail, Calendar } from "lucide-react";
+import { User, CreditCard, FileText, Receipt, Building, MapPin, Phone, Mail, Calendar, Download } from "lucide-react";
 import PaymentModal from "./PaymentModal";
 
 interface CustomerViewModalProps {
@@ -28,6 +28,7 @@ export default function CustomerViewModal({
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedCard, setSelectedCard] = useState<any | null>(null);
   const [showFullCardNumbers, setShowFullCardNumbers] = useState(false);
+  const [generatingBill, setGeneratingBill] = useState(false);
 
   useEffect(() => {
     console.log('CustomerViewModal: open =', open, 'customer =', customer);
@@ -157,6 +158,51 @@ export default function CustomerViewModal({
     setSelectedCard(null);
   };
 
+  const generateBill = async () => {
+    if (!customerData) return;
+    
+    setGeneratingBill(true);
+    try {
+      const response = await fetch('/api/customers/generate-bill', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          customerId: customerData.id,
+          customerData: customerData,
+          accounts: accounts,
+          cards: cards,
+          transactions: transactions,
+          taxDetails: taxDetails,
+          identityDocuments: identityDocuments,
+          cardPendingAmounts: cardPendingAmounts
+        }),
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Bill_${customerData.full_name}_${new Date().toISOString().slice(0, 10)}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        alert('Bill generated successfully! PDF file has been downloaded.');
+      } else {
+        throw new Error('Failed to generate bill');
+      }
+    } catch (error) {
+      console.error('Error generating bill:', error);
+      alert('Failed to generate bill. Please try again.');
+    } finally {
+      setGeneratingBill(false);
+    }
+  };
+
   if (!open) return null;
 
   return (
@@ -171,7 +217,17 @@ export default function CustomerViewModal({
               {loading ? "Loading..." : customerData?.full_name || "Customer Details"}
             </h3>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white">✕</button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={generateBill}
+              disabled={generatingBill || !customerData}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              {generatingBill ? 'Generating...' : 'Generate Bill'}
+            </button>
+            <button onClick={onClose} className="text-gray-400 hover:text-white">✕</button>
+          </div>
         </div>
 
         {/* Content */}

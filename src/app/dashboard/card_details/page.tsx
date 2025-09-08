@@ -38,8 +38,8 @@ export default function CardDetailsPage() {
       
       // Ensure we're sending the right data types
       if (dataToSubmit.customer_id) {
-        // Make sure customer_id is properly formatted (some APIs expect string, some expect number)
-        dataToSubmit.customer_id = String(dataToSubmit.customer_id);
+        // Make sure customer_id is a number as expected by the database
+        dataToSubmit.customer_id = Number(dataToSubmit.customer_id);
       }
       
       console.log('Final data to submit:', JSON.stringify(dataToSubmit, null, 2));
@@ -63,6 +63,13 @@ export default function CardDetailsPage() {
             errorMessage = errorData.error || errorMessage;
           } catch (parseError) {
             console.error('Error parsing error response:', parseError);
+            console.error('Raw response text:', responseText);
+            // If we can't parse JSON, it might be HTML error page
+            if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+              errorMessage = 'Server returned HTML error page instead of JSON. Check server logs.';
+            } else {
+              errorMessage = `Server error: ${responseText.substring(0, 200)}...`;
+            }
           }
           throw new Error(errorMessage);
         }
@@ -85,6 +92,13 @@ export default function CardDetailsPage() {
             errorMessage = errorData.error || errorMessage;
           } catch (parseError) {
             console.error('Error parsing error response:', parseError);
+            console.error('Raw response text:', responseText);
+            // If we can't parse JSON, it might be HTML error page
+            if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+              errorMessage = 'Server returned HTML error page instead of JSON. Check server logs.';
+            } else {
+              errorMessage = `Server error: ${responseText.substring(0, 200)}...`;
+            }
           }
           throw new Error(errorMessage);
         }

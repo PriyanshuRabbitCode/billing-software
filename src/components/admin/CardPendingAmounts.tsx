@@ -3,11 +3,12 @@ import { useState, useEffect } from "react";
 import PaymentModal from "./PaymentModal";
 
 interface CardPendingData {
-  cardNumber: string;
-  cardName: string;
-  customerName: string;
-  receivedAmount: number;
-  pendingAmount: number;
+  card_number: string;
+  card_name: string;
+  customer_id: number;
+  customer_name: string;
+  pending_amount: number;
+  received_amount: number;
 }
 
 interface CardPendingAmountsProps {
@@ -49,12 +50,12 @@ export default function CardPendingAmounts({ selectedCustomerId }: CardPendingAm
 
       // Transform the data to match the expected format
       const transformedData = result.data.map((card: any) => ({
-        cardNumber: card.card_number,
-        cardName: card.card_name,
-        customerName: card.customer?.full_name || 'Unknown',
-        pendingAmount: card.pending_amount || 0,
-        totalDeposits: card.total_deposits || 0,
-        totalWithdrawals: card.total_withdrawals || 0
+        card_number: card.card_number,
+        card_name: card.card_name,
+        customer_id: card.customer?.id || 0,
+        customer_name: card.customer?.full_name || 'Unknown',
+        pending_amount: card.pending_amount || 0,
+        received_amount: card.total_deposits || 0
       }));
 
       setCardPendingData(transformedData);
@@ -80,8 +81,8 @@ export default function CardPendingAmounts({ selectedCustomerId }: CardPendingAm
     // Update the card data optimistically
     setCardPendingData(prev => 
       prev.map(card => 
-        card.cardNumber === cardNumber 
-          ? { ...card, pendingAmount: newPendingAmount }
+        card.card_number === cardNumber 
+          ? { ...card, pending_amount: newPendingAmount }
           : card
       )
     );
@@ -166,21 +167,21 @@ export default function CardPendingAmounts({ selectedCustomerId }: CardPendingAm
             </thead>
             <tbody>
               {cardPendingData.map((card, index) => (
-                <tr key={card.cardNumber} className="border-b border-gray-700 hover:bg-gray-700/50">
+                <tr key={card.card_number} className="border-b border-gray-700 hover:bg-gray-700/50">
                   <td className="py-3 px-2 text-white">
-                    {card.cardNumber.replace(/(\d{4})(?=\d)/g, '$1 ')}
+                    {card.card_number.replace(/(\d{4})(?=\d)/g, '$1 ')}
                   </td>
-                  <td className="py-3 px-2 text-white">{card.cardName}</td>
+                  <td className="py-3 px-2 text-white">{card.card_name}</td>
                   <td className="py-3 px-2 text-right text-green-400">
-                    {formatCurrency(card.receivedAmount)}
+                    {formatCurrency(card.received_amount)}
                   </td>
                   <td className="py-3 px-2 text-right">
-                    <span className={card.pendingAmount > 0 ? 'text-yellow-400' : 'text-green-400'}>
-                      {formatCurrency(card.pendingAmount)}
+                    <span className={card.pending_amount > 0 ? 'text-yellow-400' : 'text-green-400'}>
+                      {formatCurrency(card.pending_amount)}
                     </span>
                   </td>
                   <td className="py-3 px-2 text-center">
-                    {card.pendingAmount > 0 ? (
+                    {card.pending_amount > 0 ? (
                       <button
                         onClick={() => handlePayClick(card)}
                         className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
@@ -206,13 +207,13 @@ export default function CardPendingAmounts({ selectedCustomerId }: CardPendingAm
           <div className="flex justify-between text-sm">
             <span className="text-gray-400">Total Received:</span>
             <span className="text-green-400">
-              {formatCurrency(cardPendingData.reduce((sum, card) => sum + card.receivedAmount, 0))}
+              {formatCurrency(cardPendingData.reduce((sum, card) => sum + card.received_amount, 0))}
             </span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-gray-400">Total Pending:</span>
             <span className="text-yellow-400">
-              {formatCurrency(cardPendingData.reduce((sum, card) => sum + card.pendingAmount, 0))}
+              {formatCurrency(cardPendingData.reduce((sum, card) => sum + card.pending_amount, 0))}
             </span>
           </div>
         </div>
