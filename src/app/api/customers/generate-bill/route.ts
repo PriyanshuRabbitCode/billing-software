@@ -21,18 +21,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Calculate totals from accounts
-    const totalReceived = accounts?.reduce((sum: number, account: any) => sum + (account.received || 0), 0) || 0;
-    const totalPending = accounts?.reduce((sum: number, account: any) => sum + (account.pending_amount || 0), 0) || 0;
-    const totalCreditLimit = accounts?.reduce((sum: number, account: any) => sum + (account.credit_limit || 0), 0) || 0;
+    // Calculate totals from transactions (primary source of truth)
+    const totalDeposits = transactions?.reduce((sum: number, transaction: any) => sum + (parseFloat(transaction.deposit_amount) || 0), 0) || 0;
+    const totalWithdrawals = transactions?.reduce((sum: number, transaction: any) => sum + (parseFloat(transaction.withdraw_amount) || 0), 0) || 0;
+    const totalPayableAmounts = transactions?.reduce((sum: number, transaction: any) => sum + (parseFloat(transaction.payable_amount) || 0), 0) || 0;
+    const totalPendingFromTransactions = transactions?.reduce((sum: number, transaction: any) => sum + (parseFloat(transaction.pending_amount) || 0), 0) || 0;
     
-    // Calculate totals from transactions (deposits and withdrawals)
-    const totalDeposits = transactions?.reduce((sum: number, transaction: any) => sum + (transaction.deposit_amount || 0), 0) || 0;
-    const totalWithdrawals = transactions?.reduce((sum: number, transaction: any) => sum + (transaction.withdraw_amount || 0), 0) || 0;
-    const totalTransactions = totalDeposits + totalWithdrawals;
+    // Calculate received amount as total deposits minus current pending
+    const totalReceived = totalDeposits - Math.max(0, totalPendingFromTransactions);
+    const totalPending = Math.max(0, totalPendingFromTransactions);
     
-    // Calculate totals from customer credits
-    const totalCredits = transactions?.reduce((sum: number, transaction: any) => sum + (transaction.payable_amount || 0), 0) || 0;
+    // Calculate totals from accounts (fallback/additional info)
+    const totalCreditLimit = accounts?.reduce((sum: number, account: any) => sum + (parseFloat(account.credit_limit) || 0), 0) || 0;
+    
+    // Total transactions should be total of payable amounts
+    const totalTransactions = totalPayableAmounts;
+    
+    // Calculate net balance
+    const netBalance = totalReceived - totalPending;
+
+    // Derive credit allowed (true if any account allows credit)
+    const creditAllowed = Array.isArray(accounts) ? accounts.some((a: any) => !!a.credit_allowed) : false;
 
     // Helper function to format currency without decimals
     const formatCurrency = (amount: number) => {
@@ -208,16 +217,15 @@ export async function POST(request: NextRequest) {
             <p><strong>Total Deposits:</strong> ${formatCurrency(totalDeposits)}</p>
             <p><strong>Total Withdrawals:</strong> ${formatCurrency(totalWithdrawals)}</p>
             <p><strong>Total Transactions:</strong> ${formatCurrency(totalTransactions)}</p>
+            <p><strong>Net Balance:</strong> ${formatCurrency(netBalance)}</p>
           </div>
         </div>
 
-        ${accounts && accounts.length > 0 ? `
         <div class="section">
           <h2>Account Details</h2>
           <table>
             <thead>
               <tr>
-                <th>Account ID</th>
                 <th>Received Amount</th>
                 <th>Pending Amount</th>
                 <th>Credit Limit</th>
@@ -225,19 +233,15 @@ export async function POST(request: NextRequest) {
               </tr>
             </thead>
             <tbody>
-              ${accounts.map((account: any) => `
-                <tr>
-                  <td>${account.id}</td>
-                  <td class="amount">${formatCurrency(account.received || 0)}</td>
-                  <td class="amount">${formatCurrency(account.pending_amount || 0)}</td>
-                  <td class="amount">${formatCurrency(account.credit_limit || 0)}</td>
-                  <td>${account.credit_allowed ? 'Yes' : 'No'}</td>
-                </tr>
-              `).join('')}
+              <tr>
+                <td class="amount">${formatCurrency(totalDeposits)}</td>
+                <td class="amount">${formatCurrency(totalPending)}</td>
+                <td class="amount">${formatCurrency(totalCreditLimit)}</td>
+                <td>${creditAllowed ? 'Yes' : 'No'}</td>
+              </tr>
             </tbody>
           </table>
         </div>
-        ` : ''}
 
         ${cards && cards.length > 0 ? `
         <div class="section">
@@ -273,7 +277,6 @@ export async function POST(request: NextRequest) {
               <tr>
                 <th>PAN Number</th>
                 <th>Aadhaar Number</th>
-                <th>GST Type</th>
               </tr>
             </thead>
             <tbody>
@@ -281,7 +284,6 @@ export async function POST(request: NextRequest) {
                 <tr>
                   <td>${tax.pan_no || '—'}</td>
                   <td>${tax.aadhaar_no || '—'}</td>
-                  <td>${tax.gst_type || '—'}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -335,15 +337,20 @@ export async function POST(request: NextRequest) {
               </tr>
             </thead>
             <tbody>
-              ${cardPendingAmounts.map((card: any) => `
+              ${cardPendingAmounts.map((cardPending: any) => {
+                // Find the matching card from cards array to get the due date
+                const matchingCard = cards?.find((c: any) => c.card_number === cardPending.card_number);
+                const dueDate = matchingCard?.due_date ? new Date(matchingCard.due_date).toLocaleDateString() : '—';
+                
+                return `
                 <tr>
-                  <td>${card.card_number ? `**** **** **** ${card.card_number.slice(-4)}` : '—'}</td>
-                  <td>${card.card_name || '—'}</td>
-                  <td class="amount">${formatCurrency(card.pending_amount || 0)}</td>
-                  <td>${card.due_date ? new Date(card.due_date).toLocaleDateString() : '—'}</td>
+                  <td>${cardPending.card_number ? `**** **** **** ${cardPending.card_number.slice(-4)}` : '—'}</td>
+                  <td>${cardPending.card_name || '—'}</td>
+                  <td class="amount">${formatCurrency(cardPending.pending_amount || 0)}</td>
+                  <td>${dueDate}</td>
                   <td>Pending</td>
-                </tr>
-              `).join('')}
+                </tr>`;
+              }).join('')}
             </tbody>
           </table>
         </div>
@@ -371,13 +378,9 @@ export async function POST(request: NextRequest) {
             <span>Total Transactions:</span>
             <span>${formatCurrency(totalTransactions)}</span>
           </div>
-          <div class="total-row">
-            <span>Total Credits:</span>
-            <span>${formatCurrency(totalCredits)}</span>
-          </div>
           <div class="total-row grand-total">
             <span>Net Balance:</span>
-            <span>${formatCurrency(totalReceived - totalPending)}</span>
+            <span>${formatCurrency(netBalance)}</span>
           </div>
         </div>
 
