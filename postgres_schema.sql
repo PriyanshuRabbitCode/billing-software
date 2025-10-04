@@ -30,7 +30,11 @@ CREATE TABLE IF NOT EXISTS public.card_details (
     card_type VARCHAR(50),
     card_name VARCHAR(100),
     card_number VARCHAR(20) UNIQUE,
-    due_date DATE
+    due_date DATE,
+    enable_defaults BOOLEAN DEFAULT FALSE,
+    default_pos_type VARCHAR(10) CHECK (default_pos_type IS NULL OR default_pos_type IN ('MP', 'PH', 'MOS')),
+    default_tax_rate DECIMAL(5,2) CHECK (default_tax_rate IS NULL OR default_tax_rate >= 0),
+    default_mdr_rate DECIMAL(5,2) CHECK (default_mdr_rate IS NULL OR default_mdr_rate >= 0)
 );
 
 -- Identity Documents

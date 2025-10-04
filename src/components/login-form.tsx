@@ -19,6 +19,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { signIn } from '@/lib/auth';
 import { loginSchema } from '@/lib/validations';
+import { getErrorMessage } from '@/lib/errorHandling';
+import { useToastHelpers } from '@/components/ui/Toast';
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
@@ -29,6 +31,7 @@ export function LoginForm({
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { success, error: showError } = useToastHelpers();
   
   const {
     register,
@@ -47,16 +50,17 @@ export function LoginForm({
     setError(null);
     
     try {
-      const result = await signIn({
+      await signIn({
         email: data.email,
         password: data.password,
       });
       
-      console.log('Login successful, redirecting to admin page');
+      success('Login Successful', 'Welcome back! Redirecting to dashboard...');
       router.push('/admin');
     } catch (err: any) {
-      console.error('Login error:', err);
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      const errorMessage = getErrorMessage(err);
+      setError(errorMessage);
+      showError('Login Failed', errorMessage);
     } finally {
       setIsLoading(false);
     }

@@ -117,7 +117,7 @@ export default function DataTable<T extends { id?: number | string }>({
           <tbody>
             {pageData.map((row: any) => (
               <tr 
-                key={row.id ?? JSON.stringify(row)} 
+                key={row.id ?? `row-${pageData.indexOf(row)}`} 
                 className="border-t border-gray-800 hover:bg-gray-800/30 transition-colors cursor-pointer"
                 onClick={() => onView && onView(row)}
               >

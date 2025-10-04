@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/postgres';
+import { AppError, handleDatabaseError, logError } from '@/lib/errorHandling';
 
 export const runtime = 'nodejs';
 
@@ -29,7 +30,16 @@ interface CustomerWithRelations {
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
+    // Normalize empty search params like "/api/customers?" → behave as "/api/customers"
+    const url = new URL(request.url);
+    const searchParams = url.searchParams;
+    // Remove empty params (e.g., "?" or "?foo=")
+    for (const [key, value] of Array.from(searchParams.entries())) {
+      if (value === null || value === undefined || String(value).trim() === '') {
+        searchParams.delete(key);
+      }
+    }
+
     const include = searchParams.get('include') || '';
     const customerId = searchParams.get('id');
     const limit = parseInt(searchParams.get('limit') || '1000');
@@ -229,11 +239,36 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Customers API error:', error);
+    logError(error, 'Customers API: GET');
+    
+    if (error instanceof AppError) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: error.message,
+          code: error.code
+        },
+        { status: error.status }
+      );
+    }
+    
+    // Handle database errors
+    if (error instanceof Error && error.message.includes('database')) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Database operation failed. Please try again.',
+          code: 'DATABASE_ERROR'
+        },
+        { status: 500 }
+      );
+    }
+    
     return NextResponse.json(
       { 
         success: false, 
-        error: error instanceof Error ? error.message : 'Internal server error' 
+        error: 'Internal server error',
+        code: 'INTERNAL_ERROR'
       },
       { status: 500 }
     );
@@ -313,11 +348,49 @@ export async function POST(request: NextRequest) {
     }, { status: 201 });
 
   } catch (error) {
-    console.error('Customers POST error:', error);
+    logError(error, 'Customers API: POST');
+    
+    if (error instanceof AppError) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: error.message,
+          code: error.code
+        },
+        { status: error.status }
+      );
+    }
+    
+    // Handle database constraint errors
+    if (error instanceof Error) {
+      if (error.message.includes('duplicate key') || error.message.includes('unique constraint')) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: 'A customer with this information already exists.',
+            code: 'DUPLICATE_CUSTOMER'
+          },
+          { status: 409 }
+        );
+      }
+      
+      if (error.message.includes('foreign key')) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: 'Invalid customer reference.',
+            code: 'INVALID_REFERENCE'
+          },
+          { status: 400 }
+        );
+      }
+    }
+    
     return NextResponse.json(
       { 
         success: false, 
-        error: error instanceof Error ? error.message : 'Internal server error' 
+        error: 'Failed to create customer. Please try again.',
+        code: 'CREATE_FAILED'
       },
       { status: 500 }
     );

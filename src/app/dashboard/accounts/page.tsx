@@ -18,21 +18,19 @@ export default function AccountsPage() {
     const res = await fetch(`/api/${schema.table}`);
     const data = await res.json();
     
-    // Transform the data to include customer names
-    const transformedData = await Promise.all((data ?? []).map(async (row: any) => {
-              try {
-          const customerRes = await fetch(`/api/customers?id=${row.customer_id}`);
-          const result = await customerRes.json();
-          const customer = result.data[0];
-          return {
-            ...row,
-            customer_name: customer?.full_name || 'Unknown'
-          };
-        } catch (err) {
-          console.error('Error fetching customer:', err);
-          return row;
-        }
-    }));
+    // Fetch all customers in a single call and build a map
+    const customersRes = await fetch(`/api/customers`);
+    const customersResult = await customersRes.json();
+    const customersMap = new Map<string, any>();
+    (customersResult.data || []).forEach((c: any) => customersMap.set(String(c.id), c));
+
+    const transformedData = (data ?? []).map((row: any) => {
+      const customer = customersMap.get(String(row.customer_id));
+      return {
+        ...row,
+        customer_name: customer?.full_name || 'Unknown'
+      };
+    });
     
     setRows(transformedData);
   }, []);

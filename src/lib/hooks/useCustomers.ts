@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
 interface Customer {
   id: number;
@@ -40,15 +41,11 @@ interface UseCustomersResult {
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
-  invalidateCache: () => void;
-  cached: boolean;
-  timestamp: number;
 }
 
 // Global customer cache to share data across components
 let globalCustomerCache: Customer[] = [];
 let globalCustomerCacheTimestamp = 0;
-let globalCustomerCachePromise: Promise<Customer[]> | null = null;
 
 export function useCustomers(options: UseCustomersOptions = {}): UseCustomersResult {
   const { 
@@ -61,13 +58,7 @@ export function useCustomers(options: UseCustomersOptions = {}): UseCustomersRes
     forceRefresh = false 
   } = options;
 
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [cached, setCached] = useState(false);
-  const [timestamp, setTimestamp] = useState(0);
-
-  const buildUrl = useCallback(() => {
+  const buildUrl = useMemo(() => {
     const params = new URLSearchParams();
     if (include === 'relations') params.append('include', 'relations');
     if (customerId) params.append('id', customerId.toString());
@@ -76,187 +67,48 @@ export function useCustomers(options: UseCustomersOptions = {}): UseCustomersRes
     if (offset !== 0) params.append('offset', offset.toString());
     if (search) params.append('search', search);
     if (forceRefresh) params.append('refresh', 'true');
-    
-    return `/api/customers?${params.toString()}`;
+    const qs = params.toString();
+    return qs ? `/api/customers?${qs}` : `/api/customers`;
   }, [include, customerId, customerIds, limit, offset, search, forceRefresh]);
 
-  const fetchCustomers = useCallback(async () => {
-    // If we're fetching basic customer data and have a recent cache, use it
-    if (include === 'basic' && !customerId && !customerIds && !search && !forceRefresh && 
-        globalCustomerCache.length > 0 && 
-        Date.now() - globalCustomerCacheTimestamp < 5 * 60 * 1000) {
-      setCustomers(globalCustomerCache);
-      setCached(true);
-      setTimestamp(globalCustomerCacheTimestamp);
-      setError(null);
-      return;
-    }
+  const queryKey = useMemo(() => [
+    'customers', include, customerId || null, (customerIds || []).join(',') || null, limit, offset, search || null
+  ], [include, customerId, customerIds, limit, offset, search]);
 
-    // If there's already a fetch in progress, wait for it
-    if (globalCustomerCachePromise && include === 'basic' && !customerId && !customerIds && !search) {
-      setLoading(true);
-      try {
-        const cachedCustomers = await globalCustomerCachePromise;
-        setCustomers(cachedCustomers);
-        setCached(true);
-        setTimestamp(globalCustomerCacheTimestamp);
-        setError(null);
-      } catch (err: any) {
-        setError(err.message || 'Failed to fetch customers');
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const url = buildUrl();
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
+  const query = useQuery({
+    queryKey,
+    queryFn: async () => {
+      const response = await fetch(buildUrl);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const result: CustomerResponse = await response.json();
-      
-      // Update global cache for basic customer data
+      // Update legacy global cache for basic list to interop with existing logic if needed
       if (include === 'basic' && !customerId && !customerIds && !search) {
         globalCustomerCache = result.data;
         globalCustomerCacheTimestamp = result.timestamp;
       }
-      
-      setCustomers(result.data);
-      setCached(result.cached);
-      setTimestamp(result.timestamp);
-      setError(null);
-    } catch (err: any) {
-      setError(err.message || 'Failed to fetch customers');
-      setCustomers([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [buildUrl, include, customerId, customerIds, search, forceRefresh]);
-
-  const refetch = useCallback(async () => {
-    // Clear global cache to force fresh fetch
-    if (include === 'basic' && !customerId && !customerIds && !search) {
-      globalCustomerCache = [];
-      globalCustomerCacheTimestamp = 0;
-      globalCustomerCachePromise = null;
-    }
-    
-    const url = buildUrl();
-    const refreshUrl = url.includes('?') ? `${url}&refresh=true` : `${url}?refresh=true`;
-    
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch(refreshUrl);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const result: CustomerResponse = await response.json();
-      
-      // Update global cache for basic customer data
-      if (include === 'basic' && !customerId && !customerIds && !search) {
-        globalCustomerCache = result.data;
-        globalCustomerCacheTimestamp = result.timestamp;
-      }
-      
-      setCustomers(result.data);
-      setCached(result.cached);
-      setTimestamp(result.timestamp);
-      setError(null);
-    } catch (err: any) {
-      setError(err.message || 'Failed to fetch customers');
-      setCustomers([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [buildUrl, include, customerId, customerIds, search]);
-
-  const invalidateCache = useCallback(async () => {
-    try {
-      await fetch('/api/customers', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'invalidate-cache' })
-      });
-      
-      // Clear global cache
-      globalCustomerCache = [];
-      globalCustomerCacheTimestamp = 0;
-      globalCustomerCachePromise = null;
-      
-      // Refetch data
-      await refetch();
-    } catch (err: any) {
-      console.error('Failed to invalidate cache:', err);
-    }
-  }, [refetch]);
-
-  useEffect(() => {
-    // For basic customer data without specific filters, use global cache promise
-    if (include === 'basic' && !customerId && !customerIds && !search && !forceRefresh) {
-      if (globalCustomerCachePromise) {
-        setLoading(true);
-        globalCustomerCachePromise.then(cachedCustomers => {
-          setCustomers(cachedCustomers);
-          setCached(true);
-          setTimestamp(globalCustomerCacheTimestamp);
-          setError(null);
-          setLoading(false);
-        }).catch(err => {
-          setError(err.message || 'Failed to fetch customers');
-          setLoading(false);
-        });
-      } else {
-        globalCustomerCachePromise = fetchCustomers().then(() => globalCustomerCache);
-        fetchCustomers();
-      }
-    } else {
-      fetchCustomers();
-    }
-  }, [fetchCustomers, include, customerId, customerIds, search, forceRefresh]);
+      return result.data as Customer[];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 
   return {
-    customers,
-    loading,
-    error,
-    refetch,
-    invalidateCache,
-    cached,
-    timestamp
+    customers: (query.data as Customer[]) || [],
+    loading: query.isLoading,
+    error: (query.error as any)?.message || null,
+    refetch: async () => { await query.refetch(); },
   };
 }
 
 // Helper function to invalidate customer cache when customers are modified
 export async function invalidateCustomerCache(): Promise<void> {
-  try {
-    await fetch('/api/customers', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'invalidate-cache' })
-    });
-    
-    // Clear global cache
-    globalCustomerCache = [];
-    globalCustomerCacheTimestamp = 0;
-    globalCustomerCachePromise = null;
-  } catch (error) {
-    console.error('Failed to invalidate customer cache:', error);
-  }
+  // With React Query, invalidation is handled at call sites via queryClient.invalidateQueries
+  globalCustomerCache = [];
+  globalCustomerCacheTimestamp = 0;
 }
 
 // Helper function to get a single customer with relations
 export function useCustomer(customerId: number, includeRelations: boolean = false) {
-  const { customers, loading, error, refetch, invalidateCache, cached, timestamp } = useCustomers({
+  const { customers, loading, error, refetch } = useCustomers({
     customerId,
     include: includeRelations ? 'relations' : 'basic'
   });
@@ -265,16 +117,13 @@ export function useCustomer(customerId: number, includeRelations: boolean = fals
     customer: customers[0] || null,
     loading,
     error,
-    refetch,
-    invalidateCache,
-    cached,
-    timestamp
+    refetch
   };
 }
 
 // Helper function to get multiple customers by IDs
 export function useCustomersByIds(customerIds: number[], includeRelations: boolean = false) {
-  const { customers, loading, error, refetch, invalidateCache, cached, timestamp } = useCustomers({
+  const { customers, loading, error, refetch } = useCustomers({
     customerIds,
     include: includeRelations ? 'relations' : 'basic'
   });
@@ -283,9 +132,6 @@ export function useCustomersByIds(customerIds: number[], includeRelations: boole
     customers,
     loading,
     error,
-    refetch,
-    invalidateCache,
-    cached,
-    timestamp
+    refetch
   };
 }

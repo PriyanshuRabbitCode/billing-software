@@ -7,6 +7,8 @@ export function ChunkErrorHandler() {
   useChunkErrorHandler();
   
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
     // Additional chunk loading error handling
     const handleChunkLoadError = (event: Event) => {
       const target = event.target as HTMLScriptElement;

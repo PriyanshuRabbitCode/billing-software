@@ -51,6 +51,26 @@ export default function CardDetailsFormModal({
   const schema = schemas.card_details;
   const fields = schema.fields;
 
+  // Reset form to pristine state and discard values
+  const resetForm = () => {
+    setValues({});
+    setErrors({});
+    setAvailableCards([]);
+    setIsFormActive(false);
+    setLoading(false);
+  };
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
+
+  useEffect(() => {
+    if (!open) {
+      resetForm();
+    }
+  }, [open]);
+
 
 
   // Update available card names based on selected bank and type
@@ -93,11 +113,15 @@ export default function CardDetailsFormModal({
     setAvailableCards(typeCards);
     
     // If current card name is not in the filtered list, clear it
-    if (values.card_name && !typeCards.includes(values.card_name as string)) {
-      console.log('Current card name not valid for this bank+type, clearing');
-      setValues(prev => ({ ...prev, card_name: '' }));
-    }
-  }, [schema.fields, values.card_name]);
+    setValues(prev => {
+      const currentCardName = prev.card_name as string | undefined;
+      if (currentCardName && !typeCards.includes(currentCardName)) {
+        console.log('Current card name not valid for this bank+type, clearing');
+        return { ...prev, card_name: '' };
+      }
+      return prev;
+    });
+  }, [schema.fields]);
 
   // Update available cards when bank or type changes
   useEffect(() => {
@@ -110,7 +134,8 @@ export default function CardDetailsFormModal({
 
   // Initialize form values when the modal opens or when editing
   useEffect(() => {
-    // Only initialize if we don't have values yet or if initial has changed
+    // Only initialize when modal is open and we don't have values yet or when initial changes from parent
+    if (!open) return;
     if (Object.keys(values).length === 0 || initial !== null) {
       const v: Record<string, string | number | boolean | null> = {};
       fields.forEach((f) => {
@@ -155,43 +180,26 @@ export default function CardDetailsFormModal({
       // Reset form active state on initialization
       setIsFormActive(false);
     }
-  }, [initial, fields, updateAvailableCards, values]); // Added values dependency to prevent unnecessary re-initialization
+  }, [open, initial, fields, updateAvailableCards]);
 
   // Load customer options for initial value display
-  useEffect(() => {
-    let active = true;
-    async function loadCustomerOptions() {
-      try {
-        const res = await fetch(`/api/customers`);
-        const result = await res.json();
-        const list = result.data || result;
-        const customerOptions = list.map((r: any) => ({ value: r.id, label: r.full_name as string }));
-        if (active) {
-          setOptions(prev => ({ ...prev, customer_id: customerOptions }));
-        }
-      } catch {
-        if (active) {
-          setOptions(prev => ({ ...prev, customer_id: [] }));
-        }
-      }
-    }
-    loadCustomerOptions();
-    return () => {
-      active = false;
-    };
-  }, []);
-
+  // Removed extra /api/customers fetch to avoid duplicate calls; rely on DataContext in SearchableCustomerInput
 
 
   // Handle field change
   const handleChange = (name: string, value: string | number | boolean | null) => {
-    const newValues = { ...values, [name]: value };
+    let newValues = { ...values, [name]: value } as Record<string, string | number | boolean | null>;
     console.log(`Field ${name} changed to:`, value);
     console.log('New form values:', newValues);
     
     // Mark form as active when user starts interacting
     if (!isFormActive) {
       setIsFormActive(true);
+    }
+    
+    // When enabling defaults, drop Default POS Type values to remove functionality
+    if (name === 'enable_defaults' && value === true) {
+      newValues = { ...newValues, default_pos_type: '', custom_pos_type: '' };
     }
     
     setValues(newValues);
@@ -229,9 +237,21 @@ export default function CardDetailsFormModal({
       e.card_name = "Selected card is not valid for the chosen bank and type";
     }
     
-    // Validate custom POS Type when "Custom" is selected
-    if (values.enable_defaults && values.default_pos_type === "Custom" && !values.custom_pos_type) {
-      e.custom_pos_type = "Custom POS Type is required when 'Custom' is selected";
+    // Default POS Type functionality removed when defaults are enabled
+
+    // Business rule: When defaults enabled, MDR % cannot exceed Tax %
+    if (values.enable_defaults) {
+      const tax = values.default_tax_rate !== undefined && values.default_tax_rate !== null && String(values.default_tax_rate) !== ""
+        ? Number(values.default_tax_rate)
+        : null;
+      const mdr = values.default_mdr_rate !== undefined && values.default_mdr_rate !== null && String(values.default_mdr_rate) !== ""
+        ? Number(values.default_mdr_rate)
+        : null;
+      if (tax !== null && mdr !== null && !Number.isNaN(tax) && !Number.isNaN(mdr)) {
+        if (mdr > tax) {
+          e.default_mdr_rate = "Default MDR % can’t be greater than Default Tax Rate %";
+        }
+      }
     }
     
     // Validate card number format if provided
@@ -269,7 +289,7 @@ export default function CardDetailsFormModal({
       
       console.log('Submitting values:', values);
       console.log('enable_defaults value:', values.enable_defaults);
-      console.log('default_pos_type value:', values.default_pos_type);
+      // default_pos_type removed when defaults are enabled
       console.log('default_tax_rate value:', values.default_tax_rate);
       console.log('default_mdr_rate value:', values.default_mdr_rate);
       
@@ -281,7 +301,7 @@ export default function CardDetailsFormModal({
       
       try {
         await onSubmit(valuesToSubmit);
-        onClose();
+        handleClose();
       } catch (submitError) {
         console.error('Submit error details:', submitError);
         throw submitError; // Re-throw to be caught by outer catch
@@ -318,11 +338,11 @@ export default function CardDetailsFormModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60" onClick={handleClose} />
       <div className="relative w-full max-w-2xl bg-gray-900 text-gray-100 rounded-lg border border-gray-800 p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">{title}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-white">✕</button>
+          <button onClick={handleClose} className="text-gray-400 hover:text-white">✕</button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -338,6 +358,7 @@ export default function CardDetailsFormModal({
                   ? options.customer_id?.find(opt => opt.value === initial.customer_id)?.label
                   : undefined
               }
+              initialCustomerId={initial?.customer_id as number | undefined}
             />
           </div>
 
@@ -461,39 +482,7 @@ export default function CardDetailsFormModal({
                 Default Transaction Values
               </h4>
               
-              {/* Default POS Type */}
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-400">Default POS Type</label>
-                <select
-                  value={(values.default_pos_type as string) ?? ""}
-                  onChange={(e) => handleChange('default_pos_type', e.target.value)}
-                  className="bg-gray-700 border border-gray-600 rounded px-3 py-2"
-                >
-                  <option value="">Select POS Type</option>
-                  <option value="MP">MP</option>
-                  <option value="PH">PH</option>
-                  <option value="MOS">MOS</option>
-                  <option value="Custom">Custom</option>
-                </select>
-                
-                {/* Custom POS Type Input - only show when "Custom" is selected */}
-                {values.default_pos_type === "Custom" && (
-                  <div>
-                    <input
-                      type="text"
-                      value={(values.custom_pos_type as string) ?? ""}
-                      onChange={(e) => handleChange('custom_pos_type', e.target.value)}
-                      placeholder="Enter custom POS Type"
-                      className={`bg-gray-700 border rounded px-3 py-2 mt-2 w-full ${
-                        errors.custom_pos_type ? 'border-red-500' : 'border-gray-600'
-                      }`}
-                    />
-                    {errors.custom_pos_type && (
-                      <div className="text-xs text-red-400 mt-1">{errors.custom_pos_type}</div>
-                    )}
-                  </div>
-                )}
-              </div>
+              {/* Default POS Type functionality removed when defaults are enabled */}
 
               {/* Default Tax Rate */}
               <div className="flex flex-col gap-1">
@@ -508,6 +497,9 @@ export default function CardDetailsFormModal({
                   max="100"
                   className="bg-gray-700 border border-gray-600 rounded px-3 py-2"
                 />
+                {errors.default_tax_rate && (
+                  <span className="text-xs text-red-400">{errors.default_tax_rate}</span>
+                )}
               </div>
 
               {/* Default MDR Rate */}
@@ -523,13 +515,16 @@ export default function CardDetailsFormModal({
                   max="100"
                   className="bg-gray-700 border border-gray-600 rounded px-3 py-2"
                 />
+                {errors.default_mdr_rate && (
+                  <span className="text-xs text-red-400">{errors.default_mdr_rate}</span>
+                )}
               </div>
             </div>
           )}
         </div>
 
         <div className="mt-6 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 rounded bg-gray-800 border border-gray-700">Cancel</button>
+          <button onClick={handleClose} className="px-4 py-2 rounded bg-gray-800 border border-gray-700">Cancel</button>
           <button
             onClick={submit}
             disabled={loading}

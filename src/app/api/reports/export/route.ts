@@ -60,9 +60,9 @@ async function getReportData(fromDate: string, toDate: string) {
   const accountsResult = await query('SELECT * FROM accounts');
   const accounts = accountsResult.rows || [];
 
-  // Get cards within the specified date range
+  // Get cards created within the specified date range to align with main API
   const cardsResult = await query(
-    'SELECT * FROM card_details WHERE due_date >= $1 AND due_date <= $2',
+    'SELECT * FROM card_details WHERE created_at >= $1 AND created_at <= $2',
     [fromDate, toDate]
   );
   const cards = cardsResult.rows || [];

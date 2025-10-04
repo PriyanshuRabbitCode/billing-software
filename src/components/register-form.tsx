@@ -19,6 +19,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { signUp } from '@/lib/auth';
 import { registerSchema } from '@/lib/validations';
+import { getErrorMessage } from '@/lib/errorHandling';
+import { useToastHelpers } from '@/components/ui/Toast';
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
@@ -30,6 +32,7 @@ export function RegisterForm({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const { success, error: showError } = useToastHelpers();
   
   const {
     register,
@@ -59,12 +62,16 @@ export function RegisterForm({
       // Check if email confirmation is required
       if (result?.user && !result.user.email_confirmed_at) {
         setRegistrationSuccess(true);
+        success('Account Created', 'Please check your email to verify your account.');
       } else {
         // If email confirmation is not required or already confirmed
+        success('Account Created', 'Welcome! Redirecting to dashboard...');
         router.push('/admin');
       }
     } catch (err: any) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      const errorMessage = getErrorMessage(err);
+      setError(errorMessage);
+      showError('Registration Failed', errorMessage);
     } finally {
       setIsLoading(false);
     }

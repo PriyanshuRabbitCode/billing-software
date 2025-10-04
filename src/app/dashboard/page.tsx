@@ -24,6 +24,8 @@ export default function DashboardPage() {
   
   // Set default dates when component mounts
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
     const now = new Date();
     let defaultStartDate: Date;
     

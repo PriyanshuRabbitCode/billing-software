@@ -158,9 +158,10 @@ async function getFinancialSummaries(query: any, fromDate: string, toDate: strin
     const transactions = transactionsResult.rows || [];
     console.log('Financial Summaries - Filtered transactions count:', transactions.length);
 
-    // Get cards within the specified date range (based on creation date)
+    // Get cards created within the specified date range
+    // Using created_at ensures "New Cards Distribution" reflects newly added cards
     const cardsResult = await query(
-      'SELECT * FROM card_details WHERE due_date >= $1 AND due_date <= $2',
+      'SELECT * FROM card_details WHERE created_at >= $1 AND created_at <= $2',
       [fromDate, toDate]
     );
     const cards = cardsResult.rows || [];

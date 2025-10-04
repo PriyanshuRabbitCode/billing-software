@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import SearchableCustomerInput from "./SearchableCustomerInput";
 
+// Simple cache for customer options to avoid repeated /api/customers calls across modals
+let customerOptionsCache: Array<{ value: any; label: string }> | null = null;
+let customerOptionsPromise: Promise<Array<{ value: any; label: string }>> | null = null;
+
 export type FieldType =
   | "text"
   | "number"
@@ -71,15 +75,48 @@ export default function CrudFormModal<T>({
   useEffect(() => {
     let active = true;
     async function loadRelations() {
+      // Only load relations when modal is open to avoid unnecessary calls
+      if (!open) return;
+
       const relationFields = fields.filter((f) => f.relation);
       if (relationFields.length === 0) return;
       const loaded: Record<string, Array<{ value: any; label: string }>> = {};
+
+      // If any relation depends on customers, use a shared cached fetch
+      const needsCustomers = relationFields.some((f) => f.relation?.table === 'customers');
+      if (needsCustomers) {
+        try {
+          if (customerOptionsCache) {
+            // Use cached
+          } else if (customerOptionsPromise) {
+            customerOptionsCache = await customerOptionsPromise;
+          } else {
+            customerOptionsPromise = (async () => {
+              const res = await fetch(`/api/customers`);
+              const result = await res.json();
+              const list = result.data || result;
+              return list.map((r: any) => ({ value: r.id, label: r.full_name }));
+            })();
+            customerOptionsCache = await customerOptionsPromise;
+            customerOptionsPromise = null;
+          }
+        } catch (e) {
+          customerOptionsCache = [];
+          customerOptionsPromise = null;
+        }
+      }
+
       for (const f of relationFields) {
         try {
-          const res = await fetch(`/api/customers`);
-          const result = await res.json();
-          const list = result.data || result;
-          loaded[f.name] = list.map((r: any) => ({ value: r.id, label: r.full_name }));
+          if (f.relation?.table === 'customers') {
+            loaded[f.name] = customerOptionsCache || [];
+          } else {
+            // Fallback generic fetch for other relations if any
+            const res = await fetch(`/api/${f.relation?.table}`);
+            const result = await res.json();
+            const list = result.data || result;
+            loaded[f.name] = list.map((r: any) => ({ value: r[f.relation!.valueField], label: r[f.relation!.labelField] }));
+          }
         } catch (e) {
           loaded[f.name] = [];
         }
@@ -90,7 +127,7 @@ export default function CrudFormModal<T>({
     return () => {
       active = false;
     };
-  }, [fields]);
+  }, [fields, open]);
 
   // Helper functions for input types
   const getInputType = (field: CrudField) => {

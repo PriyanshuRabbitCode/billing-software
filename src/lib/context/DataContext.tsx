@@ -230,7 +230,10 @@ interface DataProviderProps {
 export function DataProvider({ children }: DataProviderProps) {
   const [state, dispatch] = useReducer(dataReducer, initialState);
 
-  // Check if cache is still valid (30 seconds for transactions, 1 minute for others)
+  // In-flight guards to avoid duplicate network calls
+  const customersInFlightRef = React.useRef<Promise<void> | null>(null);
+
+  // Check cache is still valid (30 seconds for transactions, 1 minute for others)
   const isCacheValid = (cacheTime: number, type: 'transactions' | 'other') => {
     const now = Date.now();
     const ttl = type === 'transactions' ? 30 * 1000 : 60 * 1000;
@@ -246,31 +249,43 @@ export function DataProvider({ children }: DataProviderProps) {
       return;
     }
 
+    // If a request is already in-flight, reuse it
+    if (customersInFlightRef.current) {
+      await customersInFlightRef.current;
+      return;
+    }
+
     dispatch({ type: 'SET_LOADING', payload: { key: 'customers', value: true } });
     dispatch({ type: 'SET_ERROR', payload: { key: 'customers', value: null } });
 
-    try {
-      const params = new URLSearchParams();
-      if (include === 'relations') params.append('include', 'relations');
-      if (forceRefresh) params.append('refresh', 'true');
+    const run = async () => {
+      try {
+        const params = new URLSearchParams();
+        if (include === 'relations') params.append('include', 'relations');
+        if (forceRefresh) params.append('refresh', 'true');
 
-      const response = await fetch(`/api/customers?${params.toString()}`);
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const response = await fetch(`/api/customers?${params.toString()}`);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
-      const result = await response.json();
-      if (result.success) {
-        dispatch({ type: 'SET_CUSTOMERS', payload: result.data });
-      } else {
-        throw new Error(result.error || 'Failed to fetch customers');
+        const result = await response.json();
+        if (result.success) {
+          dispatch({ type: 'SET_CUSTOMERS', payload: result.data });
+        } else {
+          throw new Error(result.error || 'Failed to fetch customers');
+        }
+      } catch (error) {
+        dispatch({ 
+          type: 'SET_ERROR', 
+          payload: { key: 'customers', value: error instanceof Error ? error.message : 'Failed to fetch customers' } 
+        });
+      } finally {
+        dispatch({ type: 'SET_LOADING', payload: { key: 'customers', value: false } });
+        customersInFlightRef.current = null;
       }
-    } catch (error) {
-      dispatch({ 
-        type: 'SET_ERROR', 
-        payload: { key: 'customers', value: error instanceof Error ? error.message : 'Failed to fetch customers' } 
-      });
-    } finally {
-      dispatch({ type: 'SET_LOADING', payload: { key: 'customers', value: false } });
-    }
+    };
+
+    customersInFlightRef.current = run();
+    await customersInFlightRef.current;
   }, [state.customers?.length, state.cache.customers]);
 
   // Fetch transactions
@@ -409,10 +424,7 @@ export function DataProvider({ children }: DataProviderProps) {
   const getCardDetailById = useCallback((id: number) => state.cardDetails.find(c => c.id === id), [state.cardDetails]);
   const invalidateCache = useCallback(() => dispatch({ type: 'CLEAR_CACHE' }), []);
 
-  // Initial data fetch
-  useEffect(() => {
-    fetchDashboard();
-  }, []);
+  // Note: Initial data fetch is handled by feature hooks (React Query) to avoid duplicates
 
   const value: DataContextType = {
     state,

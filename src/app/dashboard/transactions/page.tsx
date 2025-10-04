@@ -88,7 +88,7 @@ export default function TransactionsPage() {
       // No validation needed here as it's handled in the modal
 
       // Always use current date/time for new transactions
-      const currentDateTime = new Date().toISOString();
+      const currentDateTime = typeof window !== 'undefined' ? new Date().toISOString() : new Date().toISOString();
       
       // The values from the form are already in the correct format
       // Just ensure transaction_date is set

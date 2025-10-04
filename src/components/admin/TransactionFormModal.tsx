@@ -64,6 +64,7 @@ export default function TransactionFormModal({
     status: ""
   });
   const [loading, setLoading] = useState(false);
+  const [showTaxOptions, setShowTaxOptions] = useState(false);
   const [cardOptions, setCardOptions] = useState<Array<{ 
     card_number: string; 
     card_name: string;
@@ -1097,26 +1098,39 @@ Please try again with a lower amount or clear pending dues.`);
                     <span className="ml-2 text-xs text-yellow-400">(Manual selection required)</span>
                   )}
                 </label>
-                <select
-                  value={values.tax_rate}
-                  onChange={(e) => handleChange('tax_rate', e.target.value)}
-                  className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-                  disabled={!!(values.tax_rate && memoizedCardOptions.find(card => card.card_number === values.card_number)?.enable_defaults && 
-                               memoizedCardOptions.find(card => card.card_number === values.card_number)?.default_tax_rate?.toString() === values.tax_rate)}
-                >
-                  <option value="">Select Tax Rate</option>
-                  {/* Always show the current tax rate first if it's set (for custom card defaults) */}
-                  {values.tax_rate && values.tax_rate !== "" && (
-                    <option key={values.tax_rate} value={values.tax_rate}>{values.tax_rate}%</option>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={values.tax_rate}
+                    onChange={(e) => handleChange('tax_rate', e.target.value)}
+                    onFocus={() => setShowTaxOptions(true)}
+                    onBlur={() => setTimeout(() => setShowTaxOptions(false), 100)}
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                    placeholder="Enter or choose tax rate (e.g., 2.80)"
+                    inputMode="decimal"
+                  />
+                  {showTaxOptions && values.pos_type && (
+                    <div className="absolute z-10 mt-1 w-full bg-gray-800 border border-gray-700 rounded shadow-lg max-h-40 overflow-auto">
+                      {getAvailableTaxRates(values.pos_type).map(rate => (
+                        <button
+                          type="button"
+                          key={rate}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            handleChange('tax_rate', rate);
+                            setShowTaxOptions(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 hover:bg-gray-700 ${values.tax_rate === rate ? 'bg-gray-700' : ''}`}
+                        >
+                          {rate}%
+                        </button>
+                      ))}
+                      {getAvailableTaxRates(values.pos_type).length === 0 && (
+                        <div className="px-3 py-2 text-sm text-gray-400">No suggestions</div>
+                      )}
+                    </div>
                   )}
-                  {/* Show available tax rates for the selected POS Type */}
-                  {values.pos_type && getAvailableTaxRates(values.pos_type)
-                    .filter(rate => rate !== values.tax_rate) // Don't duplicate the current value
-                    .map(rate => (
-                      <option key={rate} value={rate}>{rate}%</option>
-                    ))
-                  }
-                </select>
+                </div>
 
               </div>
 

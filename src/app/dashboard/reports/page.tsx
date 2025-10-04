@@ -48,6 +48,8 @@ export default function ReportsPage() {
 
   // Set default date range (today 12:00 AM to current time)
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
     const today = new Date();
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     
@@ -64,8 +66,8 @@ export default function ReportsPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          fromDate: reportMode === 'default' ? new Date(new Date().setHours(0, 0, 0, 0)).toISOString() : fromDate,
-          toDate: reportMode === 'default' ? new Date().toISOString() : toDate,
+          fromDate: reportMode === 'default' ? (typeof window !== 'undefined' ? new Date(new Date().setHours(0, 0, 0, 0)).toISOString() : fromDate) : fromDate,
+          toDate: reportMode === 'default' ? (typeof window !== 'undefined' ? new Date().toISOString() : toDate) : toDate,
         }),
       });
 
@@ -94,32 +96,34 @@ export default function ReportsPage() {
         },
         body: JSON.stringify({
           format,
-          fromDate: reportMode === 'default' ? new Date(new Date().setHours(0, 0, 0, 0)).toISOString() : fromDate,
-          toDate: reportMode === 'default' ? new Date().toISOString() : toDate,
+          fromDate: reportMode === 'default' ? (typeof window !== 'undefined' ? new Date(new Date().setHours(0, 0, 0, 0)).toISOString() : fromDate) : fromDate,
+          toDate: reportMode === 'default' ? (typeof window !== 'undefined' ? new Date().toISOString() : toDate) : toDate,
         }),
       });
 
       if (response.ok) {
         const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        
-        // Get filename from response headers or create default
-        const contentDisposition = response.headers.get('content-disposition');
-        let filename = `Report_${formatDate(fromDate)}_${formatDate(toDate)}.${format}`;
-        if (contentDisposition) {
-          const filenameMatch = contentDisposition.match(/filename="(.+)"/);
-          if (filenameMatch) {
-            filename = filenameMatch[1];
+        if (typeof window !== 'undefined') {
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          
+          // Get filename from response headers or create default
+          const contentDisposition = response.headers.get('content-disposition');
+          let filename = `Report_${formatDate(fromDate)}_${formatDate(toDate)}.${format}`;
+          if (contentDisposition) {
+            const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+            if (filenameMatch) {
+              filename = filenameMatch[1];
+            }
           }
+          
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
         }
-        
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
       } else {
         throw new Error('Failed to download report');
       }
@@ -489,13 +493,13 @@ export default function ReportsPage() {
               <CreditCard className="w-5 h-5 mr-2" />
               Card Details Overview
             </h2>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-              <div className="bg-gray-50 p-4 rounded-lg">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6 items-end">
+              <div className="bg-gray-50 p-6 rounded-lg">
                 <CustomBarChart 
                   data={reportData.financialSummaries?.newCardsDistribution || [
                     { name: 'No Data', value: 0 }
                   ]}
-                  title="Card Types Distribution (Debit vs Credit Cards)"
+                  title="New Cards Distribution (Debit vs Credit Cards)"
                 />
               </div>
               
@@ -603,7 +607,7 @@ export default function ReportsPage() {
                 <p className="text-xl font-bold text-blue-900">
                   ₹{Math.floor(reportData.trendsComparison?.currentMonth || 0).toString()}
                 </p>
-                <p className="text-xs text-gray-500">{new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
+                <p className="text-xs text-gray-500">{typeof window !== 'undefined' ? new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'Current Month'}</p>
               </div>
               
               <div className="bg-green-50 p-4 rounded-lg text-center">
@@ -611,7 +615,7 @@ export default function ReportsPage() {
                 <p className="text-xl font-bold text-green-900">
                   ₹{Math.floor(reportData.trendsComparison?.lastMonth || 0).toString()}
                 </p>
-                <p className="text-xs text-gray-500">{new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
+                <p className="text-xs text-gray-500">{typeof window !== 'undefined' ? new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'Last Month'}</p>
               </div>
               
               <div className="bg-purple-50 p-4 rounded-lg text-center">
@@ -619,14 +623,14 @@ export default function ReportsPage() {
                 <p className="text-xl font-bold text-purple-900">
                   ₹{Math.floor(reportData.trendsComparison?.lastYear || 0).toString()}
                 </p>
-                <p className="text-xs text-gray-500">{new Date(new Date().getFullYear() - 1, new Date().getMonth(), 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
+                <p className="text-xs text-gray-500">{typeof window !== 'undefined' ? new Date(new Date().getFullYear() - 1, new Date().getMonth(), 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'Same Month Last Year'}</p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-gray-50 p-4 rounded-lg">
                 <CustomLineChart 
-                  data={[
+                  data={typeof window !== 'undefined' ? [
                     { 
                       name: new Date(new Date().getFullYear() - 1, new Date().getMonth(), 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }), 
                       value: reportData.trendsComparison?.lastYear || 0 
@@ -639,6 +643,10 @@ export default function ReportsPage() {
                       name: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }), 
                       value: reportData.trendsComparison?.currentMonth || 0 
                     }
+                  ] : [
+                    { name: 'Last Year', value: reportData.trendsComparison?.lastYear || 0 },
+                    { name: 'Last Month', value: reportData.trendsComparison?.lastMonth || 0 },
+                    { name: 'Current Month', value: reportData.trendsComparison?.currentMonth || 0 }
                   ]}
                   title="Transaction Amounts Over Time"
                 />

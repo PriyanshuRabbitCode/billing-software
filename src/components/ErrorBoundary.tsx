@@ -105,6 +105,8 @@ export class ErrorBoundary extends Component<Props, State> {
 // Hook to handle chunk loading errors
 export function useChunkErrorHandler() {
   React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
     const handleChunkError = (event: ErrorEvent) => {
       if (event.error?.message?.includes('Loading chunk') || 
           event.error?.name === 'ChunkLoadError') {

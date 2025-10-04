@@ -21,9 +21,23 @@ interface DashboardStats {
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
+    const url = new URL(request.url);
+    const searchParams = url.searchParams;
     const period = searchParams.get('period') || 'monthly';
     const limit = parseInt(searchParams.get('limit') || '10');
+
+    // Simple in-memory cache per period+limit
+    const cacheKey = `${period}:${limit}`;
+    if (!(global as any).__dashboardCache) {
+      (global as any).__dashboardCache = new Map<string, { timestamp: number; payload: any }>();
+    }
+    const cache: Map<string, { timestamp: number; payload: any }> = (global as any).__dashboardCache;
+    const cached = cache.get(cacheKey);
+    const now = Date.now();
+    const ttlMs = 60 * 1000; // 60s TTL
+    if (cached && now - cached.timestamp < ttlMs) {
+      return NextResponse.json(cached.payload);
+    }
 
     // Get basic stats
     const statsQuery = `
@@ -103,11 +117,15 @@ export async function GET(request: NextRequest) {
       }
     };
 
-    return NextResponse.json({
+    const payload = {
       success: true,
       data: dashboardData,
       timestamp: new Date().toISOString()
-    });
+    };
+
+    cache.set(cacheKey, { timestamp: now, payload });
+
+    return NextResponse.json(payload);
 
   } catch (error) {
     console.error('Dashboard API error:', error);

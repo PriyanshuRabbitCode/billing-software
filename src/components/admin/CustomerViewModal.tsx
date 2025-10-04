@@ -182,14 +182,16 @@ export default function CustomerViewModal({
 
       if (response.ok) {
         const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `Bill_${customerData.full_name}_${new Date().toISOString().slice(0, 10)}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
+        if (typeof window !== 'undefined') {
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `Bill_${customerData.full_name}_${new Date().toISOString().slice(0, 10)}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        }
         
         alert('Bill generated successfully! PDF file has been downloaded.');
       } else {

@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
 interface DashboardStats {
   customers: number;
@@ -37,7 +38,6 @@ interface UseDashboardResult {
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
-  invalidateCache: () => void;
 }
 
 export function useDashboard(options: UseDashboardOptions = {}): UseDashboardResult {
@@ -48,136 +48,55 @@ export function useDashboard(options: UseDashboardOptions = {}): UseDashboardRes
     forceRefresh = false 
   } = options;
 
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const buildUrl = useCallback(() => {
+  const buildUrl = useMemo(() => {
     const params = new URLSearchParams();
     params.append('period', period);
     if (startDate) params.append('startDate', startDate);
     if (endDate) params.append('endDate', endDate);
     if (forceRefresh) params.append('refresh', 'true');
     
-    return `/api/dashboard?${params.toString()}`;
+    const qs = params.toString();
+    return qs ? `/api/dashboard?${qs}` : `/api/dashboard`;
   }, [period, startDate, endDate, forceRefresh]);
+  const queryKey = useMemo(() => ["dashboard", period, startDate || null, endDate || null], [period, startDate, endDate]);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const url = buildUrl();
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
+  const query = useQuery({
+    queryKey,
+    queryFn: async () => {
+      const response = await fetch(buildUrl);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const result = await response.json();
-      
-      if (result.success) {
-        // Transform the new API response to match the expected format
-        const transformedData: DashboardData = {
-          stats: {
-            customers: result.data.totalCustomers,
-            cards: result.data.totalCards,
-            transactions: result.data.totalTransactions,
-            pending: result.data.totalPendingAmount,
-            revenue: result.data.monthlyStats.totalProfit
-          },
-          recent: result.data.recentTransactions,
-          cardPendingAmounts: {
-            total_pending: result.data.totalPendingAmount,
-            total_received: 0, // Not available in new API
-            updated_cards: 0 // Not available in new API
-          },
-          upcomingDueDates: result.data.upcomingDueDates,
-          cardDetails: [], // Will be fetched separately if needed
-          customers: [], // Will be fetched separately if needed
-          cached: false,
-          timestamp: Date.now()
-        };
-        setData(transformedData);
-        setError(null);
-      } else {
-        throw new Error(result.error || 'Failed to fetch dashboard data');
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to fetch dashboard data');
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [buildUrl]);
-
-  const refetch = useCallback(async () => {
-    // Force refresh by adding refresh parameter
-    const url = buildUrl();
-    const refreshUrl = url.includes('?') ? `${url}&refresh=true` : `${url}?refresh=true`;
-    
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch(refreshUrl);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        // Transform the new API response to match the expected format
-        const transformedData: DashboardData = {
-          stats: {
-            customers: result.data.totalCustomers,
-            cards: result.data.totalCards,
-            transactions: result.data.totalTransactions,
-            pending: result.data.totalPendingAmount,
-            revenue: result.data.monthlyStats.totalProfit
-          },
-          recent: result.data.recentTransactions,
-          cardPendingAmounts: {
-            total_pending: result.data.totalPendingAmount,
-            total_received: 0, // Not available in new API
-            updated_cards: 0 // Not available in new API
-          },
-          upcomingDueDates: result.data.upcomingDueDates,
-          cardDetails: [], // Will be fetched separately if needed
-          customers: [], // Will be fetched separately if needed
-          cached: false,
-          timestamp: Date.now()
-        };
-        setData(transformedData);
-        setError(null);
-      } else {
-        throw new Error(result.error || 'Failed to fetch dashboard data');
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to fetch dashboard data');
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [buildUrl]);
-
-  const invalidateCache = useCallback(async () => {
-    // Simply refetch data since we don't have caching in the new API
-    await refetch();
-  }, [refetch]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+      if (!result.success) throw new Error(result.error || 'Failed to fetch dashboard data');
+      const transformedData: DashboardData = {
+        stats: {
+          customers: result.data.totalCustomers,
+          cards: result.data.totalCards,
+          transactions: result.data.totalTransactions,
+          pending: result.data.totalPendingAmount,
+          revenue: result.data.monthlyStats.totalProfit
+        },
+        recent: result.data.recentTransactions,
+        cardPendingAmounts: {
+          total_pending: result.data.totalPendingAmount,
+          total_received: 0,
+          updated_cards: 0
+        },
+        upcomingDueDates: result.data.upcomingDueDates,
+        cardDetails: [],
+        customers: [],
+        cached: false,
+        timestamp: typeof window !== 'undefined' ? Date.now() : 0
+      };
+      return transformedData;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 
   return {
-    data,
-    loading,
-    error,
-    refetch,
-    invalidateCache
+    data: (query.data as DashboardData) || null,
+    loading: query.isLoading,
+    error: (query.error as any)?.message || null,
+    refetch: async () => { await query.refetch(); },
   };
 }
 

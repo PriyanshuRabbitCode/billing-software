@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useCustomers } from "@/lib/hooks/useCustomers";
+import { useData } from "@/lib/context/DataContext";
 
 interface Customer {
   id: number;
@@ -16,6 +16,7 @@ interface SearchableCustomerInputProps {
   className?: string;
   error?: string;
   initialCustomerName?: string;
+  initialCustomerId?: number;
 }
 
 export default function SearchableCustomerInput({
@@ -23,7 +24,8 @@ export default function SearchableCustomerInput({
   placeholder = "Search customers...",
   className = "",
   error,
-  initialCustomerName
+  initialCustomerName,
+  initialCustomerId
 }: SearchableCustomerInputProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
@@ -31,15 +33,30 @@ export default function SearchableCustomerInput({
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
-  // Use the new customers hook
-  const { customers, loading, error: fetchError } = useCustomers();
+  // Use global customers from DataContext to avoid duplicate /api/customers calls
+  const { state, fetchCustomers } = useData();
+  const customers = (state.customers as unknown as Customer[]) || [];
 
-  // Initialize search term with initial customer name if provided
+  // Ensure customers are loaded once if needed
+  const didRequestRef = useRef(false);
+  useEffect(() => {
+    if (customers.length === 0 && !didRequestRef.current) {
+      didRequestRef.current = true;
+      fetchCustomers();
+    }
+  }, [customers.length, fetchCustomers]);
+
+  // Initialize search term from provided initial values
   useEffect(() => {
     if (initialCustomerName && !searchTerm) {
       setSearchTerm(initialCustomerName);
+      return;
     }
-  }, [initialCustomerName, searchTerm]);
+    if (initialCustomerId && !searchTerm && customers.length > 0) {
+      const c = customers.find(c => c.id === initialCustomerId);
+      if (c) setSearchTerm(c.full_name);
+    }
+  }, [initialCustomerName, initialCustomerId, searchTerm, customers]);
 
   // Filter customers based on search term
   useEffect(() => {
@@ -49,11 +66,13 @@ export default function SearchableCustomerInput({
       return;
     }
 
-    const filtered = customers.filter(customer =>
-      customer.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.email_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.contact_no.includes(searchTerm)
-    ).slice(0, 10); // Limit to 10 suggestions
+    const filtered = customers
+      .filter((customer) =>
+        customer.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        customer.email_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        customer.contact_no.includes(searchTerm)
+      )
+      .slice(0, 10); // Limit to 10 suggestions
 
     setFilteredCustomers(filtered);
     setShowSuggestions(filtered.length > 0);
@@ -63,8 +82,6 @@ export default function SearchableCustomerInput({
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
     setSearchTerm(newValue);
-    
-    // If input is cleared, clear the selection
     if (!newValue.trim()) {
       onChange("");
     }
@@ -121,7 +138,6 @@ export default function SearchableCustomerInput({
           error ? 'border-red-500' : ''
         }`}
       />
-      
       {error && (
         <span className="text-xs text-red-400 mt-1 block">{error}</span>
       )}
@@ -132,10 +148,8 @@ export default function SearchableCustomerInput({
           ref={suggestionsRef}
           className="absolute z-50 w-full mt-1 bg-gray-800 border border-gray-700 rounded-md shadow-lg max-h-60 overflow-y-auto"
         >
-          {loading ? (
+          {customers.length === 0 ? (
             <div className="px-3 py-2 text-gray-400 text-sm">Loading...</div>
-          ) : fetchError ? (
-            <div className="px-3 py-2 text-red-400 text-sm">Error loading customers</div>
           ) : filteredCustomers.length === 0 ? (
             <div className="px-3 py-2 text-gray-400 text-sm">No customers found</div>
           ) : (

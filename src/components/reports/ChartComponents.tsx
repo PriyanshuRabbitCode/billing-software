@@ -143,6 +143,16 @@ export function CustomBarChart({ data, title, dataKey = "value" }: {
   title: string; 
   dataKey?: string;
 }) {
+  const isCardDistribution = title.toLowerCase().includes('card') && title.toLowerCase().includes('distribution');
+  // Precompute Y-axis ticks for card distribution: default 0..10, step 2, auto-expand
+  let cardYAxisDomain: [number, number] | undefined;
+  let cardYAxisTicks: number[] | undefined;
+  if (isCardDistribution) {
+    const maxVal = Math.max(0, ...data.map(d => Number(d[dataKey]) || 0));
+    const niceMax = Math.max(10, Math.ceil(maxVal / 2) * 2);
+    cardYAxisDomain = [0, niceMax];
+    cardYAxisTicks = Array.from({ length: Math.floor(niceMax / 2) + 1 }, (_, i) => i * 2);
+  }
   // Custom tooltip for customer data
   const customTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -163,7 +173,11 @@ export function CustomBarChart({ data, title, dataKey = "value" }: {
       return (
         <div className="bg-white p-3 border rounded-lg shadow-lg">
           <p className="font-medium text-gray-800">{label}</p>
-          <p className="text-blue-600">Value: {Math.floor(Number(payload[0].value)).toLocaleString()}</p>
+          {isCardDistribution ? (
+            <p className="text-blue-600">Count: {Math.floor(Number(payload[0].value)).toLocaleString()}</p>
+          ) : (
+            <p className="text-blue-600">Value: {Math.floor(Number(payload[0].value)).toLocaleString()}</p>
+          )}
         </div>
       );
     }
@@ -184,10 +198,13 @@ export function CustomBarChart({ data, title, dataKey = "value" }: {
             fontSize={12}
           />
           <YAxis 
-            tickFormatter={(value) => `₹${value.toLocaleString()}`}
+            domain={isCardDistribution ? cardYAxisDomain : undefined}
+            ticks={isCardDistribution ? cardYAxisTicks : undefined}
+            allowDecimals={false}
+            tickFormatter={(value) => isCardDistribution ? `${value}` : `₹${value.toLocaleString()}`}
           />
           <Tooltip content={customTooltip} />
-          <Legend />
+          {!isCardDistribution && <Legend />}
           <Bar 
             dataKey={dataKey} 
             fill="#8884d8"

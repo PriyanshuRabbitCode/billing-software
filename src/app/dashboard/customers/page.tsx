@@ -1,12 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import DataTable from "@/components/admin/DataTable";
 import CombinedCustomerForm from "@/components/admin/CombinedCustomerForm";
 import CustomerViewModal from "@/components/admin/CustomerViewModal";
 import { schemas } from "@/lib/tableSchemas";
 import PopupModal from "@/components/ui/PopupModal";
-import { useData } from "@/lib/context/DataContext";
+import { useCustomers } from "@/lib/hooks/useCustomers";
+import { useQueryClient } from "@tanstack/react-query";
+import { getErrorMessage, handleApiError } from "@/lib/errorHandling";
+import { useToastHelpers } from "@/components/ui/Toast";
 
 const schema = schemas.customers;
 
@@ -30,17 +33,9 @@ export default function CustomersPage() {
     type: "info"
   });
 
-  // Use the global data context
-  const { 
-    state: { customers: rows, loading, error }, 
-    fetchCustomers, 
-    invalidateCache 
-  } = useData();
-
-  // Fetch customers on mount
-  useEffect(() => {
-    fetchCustomers();
-  }, [fetchCustomers]);
+  const queryClient = useQueryClient();
+  const { customers: rows, loading, error, refetch } = useCustomers({ include: 'basic' });
+  const { success, error: showError } = useToastHelpers();
 
   const handleSave = async (values: Record<string, any>) => {
     try {
@@ -81,15 +76,16 @@ export default function CustomersPage() {
         });
         
         if (!res.ok) { 
-          const j = await res.json().catch(() => ({})); 
-          throw new Error(j.error || 'Update failed'); 
+          await handleApiError(res);
         }
         
-        const updatedData = await res.json().catch(() => ({ id }));
+        const updatedData = await res.json();
         
-        // Invalidate cache and refetch
-        await invalidateCache();
-        await fetchCustomers({ forceRefresh: true });
+        // Invalidate and refetch customers list
+        await queryClient.invalidateQueries({ queryKey: ['customers'] });
+        await refetch();
+        
+        success('Customer Updated', 'Customer information has been updated successfully.');
         
         // Return the actual customer data, not the wrapper response
         return updatedData.data || updatedData || { id };
@@ -102,30 +98,30 @@ export default function CustomersPage() {
         });
         
         if (!res.ok) { 
-          const j = await res.json().catch(() => ({})); 
-          throw new Error(j.error || 'Creation failed'); 
+          await handleApiError(res);
         }
         
-        const newData = await res.json().catch(() => ({}));
+        const newData = await res.json();
         
-        // Invalidate cache and refetch
-        await invalidateCache();
-        await fetchCustomers({ forceRefresh: true });
+        // Invalidate and refetch customers list
+        await queryClient.invalidateQueries({ queryKey: ['customers'] });
+        await refetch();
+        
+        success('Customer Created', 'New customer has been added successfully.');
         
         // Return the actual customer data, not the wrapper response
         return newData.data || newData;
       }
     } catch (error) {
-      console.error('Save error:', error);
-      if (error instanceof Error) {
-        setPopup({
-          open: true,
-          title: "Error",
-          message: error.message,
-          type: "error",
-          confirmText: "OK"
-        });
-      }
+      const errorMessage = getErrorMessage(error);
+      showError('Save Failed', errorMessage);
+      setPopup({
+        open: true,
+        title: "Error",
+        message: errorMessage,
+        type: "error",
+        confirmText: "OK"
+      });
       throw error;
     }
   };
@@ -141,9 +137,9 @@ export default function CustomersPage() {
         throw new Error(errorData.error || 'Delete failed');
       }
       
-      // Invalidate cache and refetch
-      await invalidateCache();
-      await fetchCustomers({ forceRefresh: true });
+      // Invalidate and refetch customers list
+      await queryClient.invalidateQueries({ queryKey: ['customers'] });
+      await refetch();
       
       setPopup({
         open: true,
@@ -167,7 +163,7 @@ export default function CustomersPage() {
   };
 
   // Show error state if there's an error
-  if (error.customers) {
+  if (error) {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -175,9 +171,9 @@ export default function CustomersPage() {
         </div>
         <div className="bg-red-900/20 border border-red-500/50 rounded-xl p-6">
           <h2 className="text-xl font-semibold text-red-400 mb-2">Error Loading Customers</h2>
-          <p className="text-red-300 mb-4">{error.customers}</p>
+          <p className="text-red-300 mb-4">{error}</p>
           <button 
-            onClick={() => fetchCustomers({ forceRefresh: true })}
+            onClick={() => refetch()}
             className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
           >
             Retry
@@ -202,7 +198,7 @@ export default function CustomersPage() {
       </div>
 
       {/* Loading State */}
-      {loading.customers && (
+      {loading && (
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
           <span className="ml-2 text-gray-400">Loading customers...</span>
@@ -210,7 +206,7 @@ export default function CustomersPage() {
       )}
 
       {/* Data Table */}
-      {!loading.customers && (
+      {!loading && (
         <DataTable 
           data={rows} 
           columns={schema.listColumns as any} 
