@@ -56,13 +56,28 @@ export default function IdentityDocumentsPage() {
       body: formData
     });
 
+    const raw = await response.text();
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Upload failed');
+      let errorMessage = 'Upload failed';
+      try {
+        const data = JSON.parse(raw);
+        errorMessage = data.error || data.message || errorMessage;
+      } catch {
+        if (raw.includes('<html') || raw.includes('<!DOCTYPE')) {
+          errorMessage = 'Server error occurred. Please check server logs.';
+        } else if (raw) {
+          errorMessage = raw.substring(0, 200) + '...';
+        }
+      }
+      throw new Error(errorMessage);
     }
 
-    const data = await response.json();
-    return data.path;
+    try {
+      const data = JSON.parse(raw);
+      return data.path;
+    } catch {
+      throw new Error('Invalid server response');
+    }
   };
 
   const onSubmit = async (values: Record<string, any>) => {
@@ -103,19 +118,37 @@ export default function IdentityDocumentsPage() {
         }
       }
 
+      let res: Response;
       if (editing) {
-        await fetch(`/api/${schema.table}/${editing.id}`, { 
+        res = await fetch(`/api/${schema.table}/${editing.id}`, { 
           method: 'PATCH', 
           headers: { 'Content-Type': 'application/json' }, 
           body: JSON.stringify(values) 
         });
       } else {
-        await fetch(`/api/${schema.table}`, { 
+        res = await fetch(`/api/${schema.table}`, { 
           method: 'POST', 
           headers: { 'Content-Type': 'application/json' }, 
           body: JSON.stringify(values) 
         });
       }
+
+      const responseText = await res.text();
+      if (!res.ok) {
+        let errorMessage = 'Failed to save document';
+        try {
+          const errorData = JSON.parse(responseText);
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch {
+          if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+            errorMessage = 'Server error occurred. Please check server logs.';
+          } else if (responseText) {
+            errorMessage = responseText.substring(0, 200) + '...';
+          }
+        }
+        throw new Error(errorMessage);
+      }
+
       await load();
     } catch (err) {
       console.error('Error saving document:', err);
@@ -125,8 +158,30 @@ export default function IdentityDocumentsPage() {
 
   const onDelete = async (row: any) => {
     if (!confirm("Delete this record?")) return;
-    await fetch(`/api/${schema.table}/${row.id}`, { method: 'DELETE' });
-    await load();
+    try {
+      const res = await fetch(`/api/${schema.table}/${row.id}`, { method: 'DELETE' });
+      const responseText = await res.text();
+      if (!res.ok) {
+        let errorMessage = 'Failed to delete document';
+        try {
+          const errorData = JSON.parse(responseText);
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch {
+          if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+            errorMessage = 'Server error occurred. Please check server logs.';
+          } else if (responseText) {
+            errorMessage = responseText.substring(0, 200) + '...';
+          } else {
+            errorMessage = res.statusText || `HTTP ${res.status}`;
+          }
+        }
+        throw new Error(errorMessage);
+      }
+      await load();
+    } catch (err) {
+      console.error('Error deleting document:', err);
+      alert('Error deleting document. Please try again.');
+    }
   };
 
   return (

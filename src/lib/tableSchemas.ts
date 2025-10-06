@@ -35,13 +35,18 @@ export const schemas: Record<string, TableSchema> = {
         key: "card_due_date", 
         label: "Due Date",
         render: (row: any) => {
-          if (!row.card_due_date) return "—";
-          const date = new Date(row.card_due_date);
-          return date.toLocaleDateString('en-GB', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric'
-          });
+          const dateString = row.next_due_date || row.card_due_date;
+          if (dateString) {
+            const date = new Date(dateString);
+            const dd = String(date.getDate()).padStart(2, '0');
+            const mm = String(date.getMonth() + 1).padStart(2, '0');
+            const yyyy = date.getFullYear();
+            return `${dd}-${mm}-${yyyy}`;
+          }
+          if (row.due_day) {
+            return `Day ${row.due_day}`;
+          }
+          return "—";
         }
       },
     ],
@@ -368,9 +373,9 @@ export const schemas: Record<string, TableSchema> = {
         placeholder: "XXXX XXXX XXXX XXXX" 
       },
       { 
-        name: "due_date", 
-        label: "Due Date", 
-        type: "date" 
+        name: "due_day", 
+        label: "Due Day", 
+        type: "number" 
       },
       { name: "enable_defaults", label: "Enable Defaults", type: "boolean" },
       { name: "default_pos_type", label: "Default POS Type", type: "enum", enumValues: ["MP", "PH", "MOS", "Custom"] },
@@ -385,16 +390,27 @@ export const schemas: Record<string, TableSchema> = {
       { key: "card_name", label: "Name on Card" },
       { key: "card_number", label: "Card Number" },
       { 
-        key: "due_date", 
-        label: "Due Date",
+        key: "next_due_date", 
+        label: "Next Due",
         render: (row: any) => {
-          if (!row.due_date) return "—";
-          const date = new Date(row.due_date);
-          return date.toLocaleDateString('en-GB', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric'
-          });
+          if (row.next_due_date) {
+            const date = new Date(row.next_due_date);
+            const dd = String(date.getDate()).padStart(2, '0');
+            const mm = String(date.getMonth() + 1).padStart(2, '0');
+            const yyyy = date.getFullYear();
+            return `${dd}-${mm}-${yyyy}`;
+          }
+          if (row.due_day) {
+            return `Day ${row.due_day}`;
+          }
+          if (row.due_date) {
+            const date = new Date(row.due_date);
+            const dd = String(date.getDate()).padStart(2, '0');
+            const mm = String(date.getMonth() + 1).padStart(2, '0');
+            const yyyy = date.getFullYear();
+            return `${dd}-${mm}-${yyyy}`;
+          }
+          return "—";
         }
       },
     ],

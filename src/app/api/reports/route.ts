@@ -575,9 +575,55 @@ async function getBusinessHealth(query: any, fromDate: string, toDate: string) {
     );
     const transactions = transactionsResult.rows || [];
 
-    // Get cards within the specified date range (new cards created in period)
+    // Get cards within the specified date range using computed upcoming due date based on due_day
     const cardsResult = await query(
-      'SELECT * FROM card_details WHERE due_date >= $1 AND due_date <= $2',
+      `SELECT * FROM card_details WHERE (
+        CASE 
+          WHEN due_day IS NOT NULL THEN (
+            CASE 
+              WHEN make_date(
+                EXTRACT(YEAR FROM CURRENT_DATE)::int,
+                EXTRACT(MONTH FROM CURRENT_DATE)::int,
+                LEAST(due_day, EXTRACT(DAY FROM (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day'))::int)
+              ) >= CURRENT_DATE
+              THEN make_date(
+                EXTRACT(YEAR FROM CURRENT_DATE)::int,
+                EXTRACT(MONTH FROM CURRENT_DATE)::int,
+                LEAST(due_day, EXTRACT(DAY FROM (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day'))::int)
+              )
+              ELSE make_date(
+                EXTRACT(YEAR FROM (CURRENT_DATE + INTERVAL '1 month'))::int,
+                EXTRACT(MONTH FROM (CURRENT_DATE + INTERVAL '1 month'))::int,
+                LEAST(due_day, EXTRACT(DAY FROM (date_trunc('month', CURRENT_DATE + INTERVAL '1 month') + INTERVAL '1 month' - INTERVAL '1 day'))::int)
+              )
+            END
+          )
+          ELSE due_date
+        END
+      ) >= $1 AND (
+        CASE 
+          WHEN due_day IS NOT NULL THEN (
+            CASE 
+              WHEN make_date(
+                EXTRACT(YEAR FROM CURRENT_DATE)::int,
+                EXTRACT(MONTH FROM CURRENT_DATE)::int,
+                LEAST(due_day, EXTRACT(DAY FROM (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day'))::int)
+              ) >= CURRENT_DATE
+              THEN make_date(
+                EXTRACT(YEAR FROM CURRENT_DATE)::int,
+                EXTRACT(MONTH FROM CURRENT_DATE)::int,
+                LEAST(due_day, EXTRACT(DAY FROM (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day'))::int)
+              )
+              ELSE make_date(
+                EXTRACT(YEAR FROM (CURRENT_DATE + INTERVAL '1 month'))::int,
+                EXTRACT(MONTH FROM (CURRENT_DATE + INTERVAL '1 month'))::int,
+                LEAST(due_day, EXTRACT(DAY FROM (date_trunc('month', CURRENT_DATE + INTERVAL '1 month') + INTERVAL '1 month' - INTERVAL '1 day'))::int)
+              )
+            END
+          )
+          ELSE due_date
+        END
+      ) <= $2`,
       [fromDate, toDate]
     );
     const cards = cardsResult.rows || [];

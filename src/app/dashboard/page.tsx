@@ -3,29 +3,35 @@
 import { CreditCard, DollarSign, Users, CreditCard as CardIcon, Calendar, CalendarDays } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useDashboard } from '@/lib/hooks/useDashboard';
+import { useToastHelpers } from '@/components/ui/Toast';
 
 export default function DashboardPage() {
   const [timePeriod, setTimePeriod] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('monthly');
   const [customDateRange, setCustomDateRange] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const { success, error: showError, info } = useToastHelpers();
 
-  // Use the new consolidated dashboard hook
+  // Determine selected period (supports custom)
+  const selectedPeriod: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom' = customDateRange ? 'custom' : timePeriod;
+
+  // Use the consolidated dashboard hook
   const { 
     data: dashboardData, 
     loading: dashboardLoading, 
     error: dashboardError,
     refetch: refetchDashboard 
   } = useDashboard({
-    period: timePeriod,
+    period: selectedPeriod,
     startDate: customDateRange ? startDate : undefined,
     endDate: customDateRange ? endDate : undefined
   });
   
-  // Set default dates when component mounts
+  // Set default dates when component mounts or period changes
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    
+    setErrorMessage('');
     const now = new Date();
     let defaultStartDate: Date;
     
@@ -50,6 +56,38 @@ export default function DashboardPage() {
     setEndDate(now.toISOString().split('T')[0]);
   }, [timePeriod]);
 
+  // Validate custom date range and show inline errors/toasts for invalid input
+  useEffect(() => {
+    setErrorMessage('');
+    if (!customDateRange) return;
+    if (!startDate || !endDate) {
+      setErrorMessage('Please select both From and To dates to filter the data.');
+      return;
+    }
+    const s = new Date(startDate);
+    const e = new Date(endDate);
+    if (isNaN(s.getTime()) || isNaN(e.getTime())) {
+      setErrorMessage('Invalid date format provided.');
+      showError('Invalid date format provided.');
+      return;
+    }
+    if (s > e) {
+      setErrorMessage('From Date cannot be after To Date.');
+      showError('From Date cannot be after To Date.');
+      return;
+    }
+  }, [customDateRange, startDate, endDate]);
+
+  // Notify user if no data found for selected range
+  useEffect(() => {
+    if (dashboardLoading) return;
+    const stats = dashboardData?.stats;
+    const noData = !!stats && stats.customers === 0 && stats.cards === 0 && stats.transactions === 0 && (stats.pending || 0) === 0 && (stats.revenue || 0) === 0;
+    if (customDateRange && !errorMessage && noData) {
+      info('No records found for the selected date range.');
+    }
+  }, [dashboardLoading, dashboardData, customDateRange, errorMessage]);
+
   const timePeriodOptions = [
     { value: 'daily', label: 'Daily' },
     { value: 'weekly', label: 'Weekly' },
@@ -58,7 +96,7 @@ export default function DashboardPage() {
   ];
 
   const getPeriodLabel = () => {
-    if (customDateRange && startDate && endDate) {
+    if (customDateRange && startDate && endDate && !errorMessage) {
       const start = new Date(startDate).toLocaleDateString();
       const end = new Date(endDate).toLocaleDateString();
       return `${start} - ${end}`;
@@ -105,6 +143,7 @@ export default function DashboardPage() {
               onChange={(e) => {
                 setTimePeriod(e.target.value as any);
                 setCustomDateRange(false);
+                setErrorMessage('');
               }}
               className="bg-gray-800 border border-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 px-3 py-2"
             >
@@ -121,7 +160,7 @@ export default function DashboardPage() {
               type="checkbox"
               id="customDateRange"
               checked={customDateRange}
-              onChange={(e) => setCustomDateRange(e.target.checked)}
+              onChange={(e) => { setCustomDateRange(e.target.checked); setErrorMessage(''); }}
               className="w-4 h-4 text-blue-600 bg-gray-800 border-gray-700 rounded focus:ring-blue-500 focus:ring-2"
             />
             <label htmlFor="customDateRange" className="text-sm text-gray-400">Custom Range</label>
@@ -133,20 +172,46 @@ export default function DashboardPage() {
               <input
                 type="date"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={(e) => { setStartDate(e.target.value); setErrorMessage(''); }}
                 className="bg-gray-800 border border-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 px-3 py-2"
               />
               <span className="text-gray-400">to</span>
               <input
                 type="date"
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                onChange={(e) => { setEndDate(e.target.value); setErrorMessage(''); }}
                 className="bg-gray-800 border border-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 px-3 py-2"
               />
             </div>
           )}
         </div>
       </div>
+
+      {customDateRange && errorMessage && (
+        <div className="text-sm text-red-400">{errorMessage}</div>
+      )}
+
+      {customDateRange && !errorMessage && startDate && endDate && (
+        <div className="text-xs text-gray-400">
+          Showing data from {new Date(startDate).toLocaleDateString()} to {new Date(endDate).toLocaleDateString()}
+        </div>
+      )}
+
+      {/* Loading indicator */}
+      {dashboardLoading && (
+        <div className="text-sm text-gray-400">Loading data...</div>
+      )}
+      
+      {/* No data banner */}
+      {(() => {
+        const stats = dashboardData?.stats;
+        const noData = !!stats && stats.customers === 0 && stats.cards === 0 && stats.transactions === 0 && (stats.pending || 0) === 0 && (stats.revenue || 0) === 0;
+        return customDateRange && !dashboardLoading && !errorMessage && noData ? (
+          <div className="bg-yellow-900/20 border border-yellow-500/50 rounded-xl p-4 text-yellow-300">
+            No records found for the selected date range.
+          </div>
+        ) : null;
+      })()}
       
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-5">
         <DashboardCard 
@@ -241,7 +306,11 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <div className="flex items-center">
-                      <span className="text-gray-300">{new Date(card.due_date).toLocaleDateString()}</span>
+                      <span className="text-gray-300">{
+                        card.next_due_date
+                          ? (() => { const d = new Date(card.next_due_date); return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`; })()
+                          : (card.due_day ? (() => { const today = new Date(); const y = today.getFullYear(); const m = today.getMonth(); const last = new Date(y, m+1, 0).getDate(); const effDay = Math.min(card.due_day, last); const cand = new Date(y, m, effDay); const todayOnly = new Date(y, m, today.getDate()); const target = (cand >= todayOnly) ? cand : (() => { const nm = m+1; const ny = y + (nm>11?1:0); const mi = nm%12; const lastNext = new Date(ny, mi+1, 0).getDate(); const effNext = Math.min(card.due_day, lastNext); return new Date(ny, mi, effNext); })(); return `${String(target.getDate()).padStart(2,'0')}-${String(target.getMonth()+1).padStart(2,'0')}-${target.getFullYear()}`; })() : (card.due_date ? (() => { const d = new Date(card.due_date); return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`; })() : '—'))
+                      }</span>
                     </div>
                   </div>
                 ))}

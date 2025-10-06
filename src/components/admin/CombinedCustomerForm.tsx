@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { schemas } from "@/lib/tableSchemas";
 import { CrudField } from "./CrudFormModal";
+import { useToastHelpers } from "@/components/ui/Toast";
 
 interface CombinedCustomerFormProps {
   open: boolean;
@@ -84,10 +85,16 @@ export default function CombinedCustomerForm({
     }
   }, [initialCustomer, open]);
 
+  // Debug helpers to gate logs in production
+  const DEBUG = process.env.NEXT_PUBLIC_DEBUG === 'true';
+  const debugLog = (...args: any[]) => { if (DEBUG) console.log(...args); };
+  const debugError = (...args: any[]) => { if (DEBUG) console.error(...args); };
+  const { success, error: showError } = useToastHelpers();
+
   // Fetch tax details, documents, and account info for an existing customer
   const fetchRelatedData = async (customerId: string) => {
     try {
-      console.log('Fetching related data for customer ID:', customerId);
+      debugLog('Fetching related data for customer ID:', customerId);
       
       // Fetch tax details
       const taxRes = await fetch(`/api/${taxSchema.table}`);
@@ -95,7 +102,7 @@ export default function CombinedCustomerForm({
       const taxData = taxResult.data || taxResult; // Handle both new API format and old format
       const customerTax = taxData.find((item: any) => item.customer_id === customerId);
       
-      console.log('Found tax details:', customerTax);
+      debugLog('Found tax details:', customerTax);
       
       if (customerTax) {
         setTaxValues({
@@ -120,7 +127,7 @@ export default function CombinedCustomerForm({
       const docData = docResult.data || docResult; // Handle both new API format and old format
       const customerDoc = docData.find((item: any) => item.customer_id === customerId);
       
-      console.log('Found document details:', customerDoc);
+      debugLog('Found document details:', customerDoc);
       
       if (customerDoc) {
         setDocValues({
@@ -146,7 +153,7 @@ export default function CombinedCustomerForm({
       const accountData = accountResult.data || accountResult; // Handle both new API format and old format
       const customerAccount = accountData.find((item: any) => item.customer_id === customerId);
       
-      console.log('Found account details:', customerAccount);
+      debugLog('Found account details:', customerAccount);
       
       if (customerAccount) {
         setAccountValues({
@@ -169,7 +176,7 @@ export default function CombinedCustomerForm({
         });
       }
     } catch (err) {
-      console.error("Error fetching related data:", err);
+      debugError('Error fetching related data:', err);
     }
   };
 
@@ -182,7 +189,7 @@ export default function CombinedCustomerForm({
       const customerTax = taxData.find((item: any) => item.customer_id === customerId);
       return customerTax?.pan_no || "";
     } catch (err) {
-      console.error("Error fetching PAN number:", err);
+      debugError('Error fetching PAN number:', err);
       return "";
     }
   };
@@ -195,7 +202,7 @@ export default function CombinedCustomerForm({
       const customerTax = taxData.find((item: any) => item.customer_id === customerId);
       return customerTax?.aadhaar_no || "";
     } catch (err) {
-      console.error("Error fetching Aadhaar number:", err);
+      debugError('Error fetching Aadhaar number:', err);
       return "";
     }
   };
@@ -231,8 +238,7 @@ export default function CombinedCustomerForm({
       if (panNumber) {
         newDocValues.document_number = panNumber;
         setPanAutoFilled(true);
-        // Show a brief notification that PAN was auto-filled
-        console.log(`Auto-filled PAN number from ${source}: ${panNumber}`);
+        debugLog(`Auto-filled PAN number from ${source}: ${panNumber}`);
       }
     }
     
@@ -255,8 +261,7 @@ export default function CombinedCustomerForm({
       if (aadhaarNumber) {
         newDocValues.document_number = aadhaarNumber;
         setAadhaarAutoFilled(true);
-        // Show a brief notification that Aadhaar was auto-filled
-        console.log(`Auto-filled Aadhaar number from ${source}: ${aadhaarNumber}`);
+        debugLog(`Auto-filled Aadhaar number from ${source}: ${aadhaarNumber}`);
       }
     }
     
@@ -327,7 +332,7 @@ export default function CombinedCustomerForm({
             e.email_id = "This email is already registered with another customer";
           }
         } catch (error) {
-          console.error('Error checking email uniqueness:', error);
+          debugError('Error checking email uniqueness:', error);
         }
       }
       
@@ -351,7 +356,7 @@ export default function CombinedCustomerForm({
             e.contact_no = "This contact number is already registered with another customer";
           }
         } catch (error) {
-          console.error('Error checking contact number uniqueness:', error);
+          debugError('Error checking contact number uniqueness:', error);
         }
       }
     }
@@ -388,7 +393,7 @@ export default function CombinedCustomerForm({
               e[`tax_${f.name}`] = `This PAN number is already registered with another customer`;
             }
           } catch (error) {
-            console.error(`Error checking ${f.name} uniqueness:`, error);
+            debugError(`Error checking ${f.name} uniqueness:`, error);
           }
         }
         
@@ -412,7 +417,7 @@ export default function CombinedCustomerForm({
               e[`tax_${f.name}`] = `This Aadhaar number is already registered with another customer`;
             }
           } catch (error) {
-            console.error(`Error checking ${f.name} uniqueness:`, error);
+            debugError(`Error checking ${f.name} uniqueness:`, error);
           }
         }
       }
@@ -532,13 +537,28 @@ export default function CombinedCustomerForm({
       body: formData
     });
 
+    const raw = await response.text();
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Upload failed');
+      let errorMessage = 'Upload failed';
+      try {
+        const data = JSON.parse(raw);
+        errorMessage = data.error || data.message || errorMessage;
+      } catch {
+        if (raw.includes('<html') || raw.includes('<!DOCTYPE')) {
+          errorMessage = 'Server error occurred. Please check server logs.';
+        } else if (raw) {
+          errorMessage = raw.substring(0, 200) + '...';
+        }
+      }
+      throw new Error(errorMessage);
     }
 
-    const data = await response.json();
-    return data.path;
+    try {
+      const data = JSON.parse(raw);
+      return data.path;
+    } catch {
+      throw new Error('Invalid server response');
+    }
   };
 
   // Helper functions for input types
@@ -559,22 +579,22 @@ export default function CombinedCustomerForm({
 
   // Submit all forms
   const submit = async () => {
-    console.log('Starting form submission...');
-    console.log('Customer values:', customerValues);
-    console.log('Tax values:', taxValues);
-    console.log('Document values:', docValues);
-    console.log('Account values:', accountValues);
+    debugLog('Starting form submission...');
+    debugLog('Customer values:', customerValues);
+    debugLog('Tax values:', taxValues);
+    debugLog('Document values:', docValues);
+    debugLog('Account values:', accountValues);
     
     const isValid = await validate();
     if (!isValid) {
-      console.log('Validation failed:', errors);
+      debugLog('Validation failed:', errors);
       return;
     }
     
     setLoading(true);
     
     try {
-      console.log('Initial customer data:', initialCustomer);
+      debugLog('Initial customer data:', initialCustomer);
       
       // Make sure we have the ID in the customer values for editing
       if (initialCustomer?.id) {
@@ -586,23 +606,23 @@ export default function CombinedCustomerForm({
         customerValues.created_at = new Date().toISOString();
       }
       
-      console.log('Submitting customer values:', customerValues);
+      debugLog('Submitting customer values:', customerValues);
       
       // First save customer data
       const customerResult = await onSubmit(customerValues);
-      console.log('Customer save result:', customerResult);
-      console.log('Initial customer ID:', initialCustomer?.id);
-      console.log('Customer result ID:', customerResult?.id);
-      console.log('Customer values ID:', customerValues.id);
+      debugLog('Customer save result:', customerResult);
+      debugLog('Initial customer ID:', initialCustomer?.id);
+      debugLog('Customer result ID:', customerResult?.id);
+      debugLog('Customer values ID:', customerValues.id);
       
       const customerId: string = String(initialCustomer?.id || customerResult?.id || customerValues.id || '');
-      console.log('Final customer ID:', customerId);
+      debugLog('Final customer ID:', customerId);
       
       if (!customerId) {
-        console.error('No customer ID found after save');
-        console.error('Initial customer:', initialCustomer);
-        console.error('Customer result:', customerResult);
-        console.error('Customer values:', customerValues);
+        debugError('No customer ID found after save');
+        debugError('Initial customer:', initialCustomer);
+        debugError('Customer result:', customerResult);
+        debugError('Customer values:', customerValues);
         throw new Error("Failed to get customer ID after save");
       }
       
@@ -621,7 +641,7 @@ export default function CombinedCustomerForm({
           customer_id: customerId
         };
         
-        console.log('Tax data to save:', taxDataToSave);
+        debugLog('Tax data to save:', taxDataToSave);
         
         // If we're editing an existing customer, check if tax details already exist
         let existingTaxId = taxValues.id;
@@ -636,17 +656,17 @@ export default function CombinedCustomerForm({
             
             if (existing) {
               existingTaxId = existing.id;
-              console.log('Found existing tax details:', existing);
+              debugLog('Found existing tax details:', existing);
             }
           } catch (err) {
-            console.error('Error checking existing tax details:', err);
+            debugError('Error checking existing tax details:', err);
           }
         }
         
         // Save tax details - use PATCH if we have an ID, otherwise POST
         if (existingTaxId) {
-          console.log(`Updating tax details with ID: ${existingTaxId}`);
-          console.log('Tax data being sent:', taxDataToSave);
+          debugLog(`Updating tax details with ID: ${existingTaxId}`);
+          debugLog('Tax data being sent:', taxDataToSave);
           
           const res = await fetch(`/api/${taxSchema.table}/${existingTaxId}`, {
             method: 'PATCH',
@@ -654,19 +674,32 @@ export default function CombinedCustomerForm({
             body: JSON.stringify(taxDataToSave)
           });
           
-          console.log('Tax update response status:', res.status);
-          
+          debugLog('Tax update response status:', res.status);
+          const responseText = await res.text();
           if (!res.ok) {
-            const errorData = await res.json().catch(() => ({}));
-            console.error('Error updating tax details:', errorData);
-            throw new Error(errorData.error || `Failed to update tax details: ${res.status} ${res.statusText}`);
+            let errorMessage = `Failed to update tax details: ${res.status} ${res.statusText}`;
+            try {
+              const errorData = JSON.parse(responseText);
+              debugError('Error updating tax details:', errorData);
+              errorMessage = errorData.error || errorMessage;
+            } catch {
+              if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+                errorMessage = 'Server error occurred. Please check server logs.';
+              } else if (responseText) {
+                errorMessage = responseText.substring(0, 200) + '...';
+              }
+            }
+            throw new Error(errorMessage);
           }
-          
-          const result = await res.json().catch(() => ({}));
-          console.log('Tax update result:', result);
+          try {
+            const result = JSON.parse(responseText);
+            debugLog('Tax update result:', result);
+          } catch {
+            debugLog('Tax update result (non-JSON):', responseText?.substring(0, 200));
+          }
         } else {
-          console.log('Creating new tax details');
-          console.log('Tax data being sent:', taxDataToSave);
+          debugLog('Creating new tax details');
+          debugLog('Tax data being sent:', taxDataToSave);
           
           const res = await fetch(`/api/${taxSchema.table}`, {
             method: 'POST',
@@ -674,16 +707,29 @@ export default function CombinedCustomerForm({
             body: JSON.stringify(taxDataToSave)
           });
           
-          console.log('Tax create response status:', res.status);
-          
+          debugLog('Tax create response status:', res.status);
+          const responseText = await res.text();
           if (!res.ok) {
-            const errorData = await res.json().catch(() => ({}));
-            console.error('Error creating tax details:', errorData);
-            throw new Error(errorData.error || `Failed to create tax details: ${res.status} ${res.statusText}`);
+            let errorMessage = `Failed to create tax details: ${res.status} ${res.statusText}`;
+            try {
+              const errorData = JSON.parse(responseText);
+              debugError('Error creating tax details:', errorData);
+              errorMessage = errorData.error || errorMessage;
+            } catch {
+              if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+                errorMessage = 'Server error occurred. Please check server logs.';
+              } else if (responseText) {
+                errorMessage = responseText.substring(0, 200) + '...';
+              }
+            }
+            throw new Error(errorMessage);
           }
-          
-          const result = await res.json().catch(() => ({}));
-          console.log('Tax create result:', result);
+          try {
+            const result = JSON.parse(responseText);
+            debugLog('Tax create result:', result);
+          } catch {
+            debugLog('Tax create result (non-JSON):', responseText?.substring(0, 200));
+          }
         }
       }
       
@@ -707,7 +753,7 @@ export default function CombinedCustomerForm({
           document_image: imageUrl
         };
         
-        console.log('Document data to save:', docDataToSave);
+        debugLog('Document data to save:', docDataToSave);
         
         // If we're editing an existing customer, check if document details already exist
         let existingDocId = docValues.id;
@@ -724,17 +770,17 @@ export default function CombinedCustomerForm({
             
             if (existing) {
               existingDocId = existing.id;
-              console.log('Found existing document details:', existing);
+              debugLog('Found existing document details:', existing);
             }
           } catch (err) {
-            console.error('Error checking existing document details:', err);
+            debugError('Error checking existing document details:', err);
           }
         }
         
         // Save document details - use PATCH if we have an ID, otherwise POST
         if (existingDocId) {
-          console.log(`Updating document details with ID: ${existingDocId}`);
-          console.log('Document data being sent:', docDataToSave);
+          debugLog(`Updating document details with ID: ${existingDocId}`);
+          debugLog('Document data being sent:', docDataToSave);
           
           const res = await fetch(`/api/${docSchema.table}/${existingDocId}`, {
             method: 'PATCH',
@@ -742,19 +788,32 @@ export default function CombinedCustomerForm({
             body: JSON.stringify(docDataToSave)
           });
           
-          console.log('Document update response status:', res.status);
-          
+          debugLog('Document update response status:', res.status);
+          const responseText = await res.text();
           if (!res.ok) {
-            const errorData = await res.json().catch(() => ({}));
-            console.error('Error updating document details:', errorData);
-            throw new Error(errorData.error || `Failed to update document details: ${res.status} ${res.statusText}`);
+            let errorMessage = `Failed to update document details: ${res.status} ${res.statusText}`;
+            try {
+              const errorData = JSON.parse(responseText);
+              debugError('Error updating document details:', errorData);
+              errorMessage = errorData.error || errorMessage;
+            } catch {
+              if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+                errorMessage = 'Server error occurred. Please check server logs.';
+              } else if (responseText) {
+                errorMessage = responseText.substring(0, 200) + '...';
+              }
+            }
+            throw new Error(errorMessage);
           }
-          
-          const result = await res.json().catch(() => ({}));
-          console.log('Document update result:', result);
+          try {
+            const result = JSON.parse(responseText);
+            debugLog('Document update result:', result);
+          } catch {
+            debugLog('Document update result (non-JSON):', responseText?.substring(0, 200));
+          }
         } else {
-          console.log('Creating new document details');
-          console.log('Document data being sent:', docDataToSave);
+          debugLog('Creating new document details');
+          debugLog('Document data being sent:', docDataToSave);
           
           const res = await fetch(`/api/${docSchema.table}`, {
             method: 'POST',
@@ -762,16 +821,29 @@ export default function CombinedCustomerForm({
             body: JSON.stringify(docDataToSave)
           });
           
-          console.log('Document create response status:', res.status);
-          
+          debugLog('Document create response status:', res.status);
+          const responseText = await res.text();
           if (!res.ok) {
-            const errorData = await res.json().catch(() => ({}));
-            console.error('Error creating document details:', errorData);
-            throw new Error(errorData.error || `Failed to create document details: ${res.status} ${res.statusText}`);
+            let errorMessage = `Failed to create document details: ${res.status} ${res.statusText}`;
+            try {
+              const errorData = JSON.parse(responseText);
+              debugError('Error creating document details:', errorData);
+              errorMessage = errorData.error || errorMessage;
+            } catch {
+              if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+                errorMessage = 'Server error occurred. Please check server logs.';
+              } else if (responseText) {
+                errorMessage = responseText.substring(0, 200) + '...';
+              }
+            }
+            throw new Error(errorMessage);
           }
-          
-          const result = await res.json().catch(() => ({}));
-          console.log('Document create result:', result);
+          try {
+            const result = JSON.parse(responseText);
+            debugLog('Document create result:', result);
+          } catch {
+            debugLog('Document create result (non-JSON):', responseText?.substring(0, 200));
+          }
         }
       }
       
@@ -796,7 +868,7 @@ export default function CombinedCustomerForm({
           accountDataToSave.credit_limit = null;
         }
         
-        console.log('Account data to save:', accountDataToSave);
+        debugLog('Account data to save:', accountDataToSave);
         
         // If we're editing an existing customer, check if account already exists
         let existingAccountId = accountValues.id;
@@ -811,17 +883,17 @@ export default function CombinedCustomerForm({
             
             if (existing) {
               existingAccountId = existing.id;
-              console.log('Found existing account:', existing);
+              debugLog('Found existing account:', existing);
             }
           } catch (err) {
-            console.error('Error checking existing account:', err);
+            debugError('Error checking existing account:', err);
           }
         }
         
         // Save account details - use PATCH if we have an ID, otherwise POST
         if (existingAccountId) {
-          console.log(`Updating account with ID: ${existingAccountId}`);
-          console.log('Account data being sent:', accountDataToSave);
+          debugLog(`Updating account with ID: ${existingAccountId}`);
+          debugLog('Account data being sent:', accountDataToSave);
           
           const res = await fetch(`/api/${accountSchema.table}/${existingAccountId}`, {
             method: 'PATCH',
@@ -829,19 +901,32 @@ export default function CombinedCustomerForm({
             body: JSON.stringify(accountDataToSave)
           });
           
-          console.log('Account update response status:', res.status);
-          
+          debugLog('Account update response status:', res.status);
+          const responseText = await res.text();
           if (!res.ok) {
-            const errorData = await res.json().catch(() => ({}));
-            console.error('Error updating account:', errorData);
-            throw new Error(errorData.error || `Failed to update account: ${res.status} ${res.statusText}`);
+            let errorMessage = `Failed to update account: ${res.status} ${res.statusText}`;
+            try {
+              const errorData = JSON.parse(responseText);
+              debugError('Error updating account:', errorData);
+              errorMessage = errorData.error || errorMessage;
+            } catch {
+              if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+                errorMessage = 'Server error occurred. Please check server logs.';
+              } else if (responseText) {
+                errorMessage = responseText.substring(0, 200) + '...';
+              }
+            }
+            throw new Error(errorMessage);
           }
-          
-          const result = await res.json().catch(() => ({}));
-          console.log('Account update result:', result);
+          try {
+            const result = JSON.parse(responseText);
+            debugLog('Account update result:', result);
+          } catch {
+            debugLog('Account update result (non-JSON):', responseText?.substring(0, 200));
+          }
         } else {
-          console.log('Creating new account');
-          console.log('Account data being sent:', accountDataToSave);
+          debugLog('Creating new account');
+          debugLog('Account data being sent:', accountDataToSave);
           
           const res = await fetch(`/api/${accountSchema.table}`, {
             method: 'POST',
@@ -849,16 +934,29 @@ export default function CombinedCustomerForm({
             body: JSON.stringify(accountDataToSave)
           });
           
-          console.log('Account create response status:', res.status);
-          
+          debugLog('Account create response status:', res.status);
+          const responseText = await res.text();
           if (!res.ok) {
-            const errorData = await res.json().catch(() => ({}));
-            console.error('Error creating account:', errorData);
-            throw new Error(errorData.error || `Failed to create account: ${res.status} ${res.statusText}`);
+            let errorMessage = `Failed to create account: ${res.status} ${res.statusText}`;
+            try {
+              const errorData = JSON.parse(responseText);
+              debugError('Error creating account:', errorData);
+              errorMessage = errorData.error || errorMessage;
+            } catch {
+              if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+                errorMessage = 'Server error occurred. Please check server logs.';
+              } else if (responseText) {
+                errorMessage = responseText.substring(0, 200) + '...';
+              }
+            }
+            throw new Error(errorMessage);
           }
-          
-          const result = await res.json().catch(() => ({}));
-          console.log('Account create result:', result);
+          try {
+            const result = JSON.parse(responseText);
+            debugLog('Account create result:', result);
+          } catch {
+            debugLog('Account create result (non-JSON):', responseText?.substring(0, 200));
+          }
         }
       }
       
@@ -871,18 +969,18 @@ export default function CombinedCustomerForm({
       setAadhaarAutoFilled(false);
       
       // Show success message
-      alert('Customer data saved successfully!');
+      success('Customer data saved successfully!');
       onClose();
     } catch (error) {
-      console.error('Submit error:', error);
+      debugError('Submit error:', error);
       // Show more detailed error message
       if (error instanceof Error) {
-        console.error('Error details:', error.message);
-        console.error('Error stack:', error.stack);
-        alert(`Error saving data: ${error.message}`);
+        debugError('Error details:', error.message);
+        debugError('Error stack:', error.stack);
+        showError('Error saving customer data.', error.message);
       } else {
-        console.error('Unknown error type:', typeof error);
-        alert('Error saving data. Please try again.');
+        debugError('Unknown error type:', typeof error);
+        showError('Error saving customer data.');
       }
       // Don't close modal on error so user can fix the issue
     } finally {

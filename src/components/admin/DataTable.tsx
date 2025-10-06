@@ -50,9 +50,13 @@ export default function DataTable<T extends { id?: number | string }>({
       if (av == null && bv == null) return 0;
       if (av == null) return sortDir === "asc" ? -1 : 1;
       if (bv == null) return sortDir === "asc" ? 1 : -1;
-      if (av < bv) return sortDir === "asc" ? -1 : 1;
-      if (av > bv) return sortDir === "asc" ? 1 : -1;
-      return 0;
+      if (typeof av === 'number' && typeof bv === 'number') {
+        return sortDir === 'asc' ? av - bv : bv - av;
+      }
+      const aStr = String(av).toLowerCase();
+      const bStr = String(bv).toLowerCase();
+      const cmp = aStr.localeCompare(bStr, undefined, { numeric: true, sensitivity: 'base' });
+      return sortDir === 'asc' ? cmp : -cmp;
     });
     return sortedCopy;
   }, [filtered, sortKey, sortDir]);
@@ -105,7 +109,7 @@ export default function DataTable<T extends { id?: number | string }>({
                 >
                   <div className="flex items-center gap-2">
                     <span>{c.label}</span>
-                    {sortKey === c.key && (
+                    {sortKey === String(c.key) && (
                       <span className="text-blue-400">{sortDir === "asc" ? "▲" : "▼"}</span>
                     )}
                   </div>
@@ -147,7 +151,6 @@ export default function DataTable<T extends { id?: number | string }>({
                     {onDelete && (
                       <button
                         onClick={() => {
-                          console.log('Delete button clicked for row:', row);
                           onDelete(row);
                         }}
                         className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white transition-colors text-sm font-medium"

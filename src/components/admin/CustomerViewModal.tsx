@@ -30,19 +30,23 @@ export default function CustomerViewModal({
   const [showFullCardNumbers, setShowFullCardNumbers] = useState(false);
   const [generatingBill, setGeneratingBill] = useState(false);
 
+  // Debug helpers to gate logs in production
+  const DEBUG = process.env.NEXT_PUBLIC_DEBUG === 'true';
+  const debugLog = (...args: any[]) => { if (DEBUG) console.log(...args); };
+  const debugError = (...args: any[]) => { if (DEBUG) console.error(...args); };
   useEffect(() => {
-    console.log('CustomerViewModal: open =', open, 'customer =', customer);
+    debugLog('CustomerViewModal: open =', open, 'customer =', customer);
     if (open && customer) {
       loadCustomerData();
     }
   }, [open, customer, customer?.id]);
 
   useEffect(() => {
-    console.log('CustomerViewModal: taxDetails state changed =', taxDetails);
+    debugLog('CustomerViewModal: taxDetails state changed =', taxDetails);
   }, [taxDetails]);
 
   useEffect(() => {
-    console.log('CustomerViewModal: identityDocuments state changed =', identityDocuments);
+    debugLog('CustomerViewModal: identityDocuments state changed =', identityDocuments);
   }, [identityDocuments]);
 
   const loadCustomerData = async () => {
@@ -64,12 +68,12 @@ export default function CustomerViewModal({
         throw new Error('Customer not found');
       }
 
-      console.log('Customer data loaded:', customerWithRelations);
-      console.log('Tax details:', customerWithRelations.tax_details);
-      console.log('Identity documents:', customerWithRelations.identity_documents);
-      console.log('Accounts:', customerWithRelations.accounts);
-      console.log('Cards:', customerWithRelations.cards);
-      console.log('Card Pending Amounts:', customerWithRelations.card_pending_amounts);
+      debugLog('Customer data loaded:', customerWithRelations);
+      debugLog('Tax details:', customerWithRelations.tax_details);
+      debugLog('Identity documents:', customerWithRelations.identity_documents);
+      debugLog('Accounts:', customerWithRelations.accounts);
+      debugLog('Cards:', customerWithRelations.cards);
+      debugLog('Card Pending Amounts:', customerWithRelations.card_pending_amounts);
       
       setCustomerData(customerWithRelations);
       
@@ -80,9 +84,9 @@ export default function CustomerViewModal({
       const transactionsData = customerWithRelations.transactions || [];
       const cardPendingData = customerWithRelations.card_pending_amounts || [];
       
-      console.log('Setting state - Tax details:', taxData);
-      console.log('Setting state - Identity documents:', identityData);
-      console.log('Setting state - Accounts:', accountsData);
+      debugLog('Setting state - Tax details:', taxData);
+      debugLog('Setting state - Identity documents:', identityData);
+      debugLog('Setting state - Accounts:', accountsData);
       
       setTaxDetails(taxData);
       setIdentityDocuments(identityData);
@@ -91,7 +95,7 @@ export default function CustomerViewModal({
       setTransactions(transactionsData);
       setCardPendingAmounts(cardPendingData);
     } catch (error) {
-      console.error('Error loading customer data:', error);
+      debugError('Error loading customer data:', error);
       // Fallback: use the original customer data
       setCustomerData(customer);
       setTaxDetails([]);
@@ -114,14 +118,35 @@ export default function CustomerViewModal({
     }).format(amount);
   };
 
-  const formatDate = (dateString: string) => {
-    if (!dateString) return "—";
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
+  const formatDate = (dateInput: string | Date) => {
+    if (!dateInput) return "—";
+    const date = (dateInput instanceof Date) ? dateInput : new Date(dateInput);
+    const dd = String(date.getDate()).padStart(2, '0');
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const yyyy = date.getFullYear();
+    return `${dd}-${mm}-${yyyy}`;
+  };
+
+  const computeNextDueDateFromDueDay = (dueDay?: number): Date | null => {
+    if (!dueDay || dueDay < 1) return null;
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth();
+    const lastDayThisMonth = new Date(year, month + 1, 0).getDate();
+    const effectiveDayThisMonth = Math.min(dueDay, lastDayThisMonth);
+    const candidateThisMonth = new Date(year, month, effectiveDayThisMonth);
+
+    const todayDateOnly = new Date(year, month, today.getDate());
+    if (candidateThisMonth >= todayDateOnly) {
+      return candidateThisMonth;
+    }
+
+    const nextMonth = month + 1;
+    const nextMonthYear = year + (nextMonth > 11 ? 1 : 0);
+    const nextMonthIndex = nextMonth % 12;
+    const lastDayNextMonth = new Date(nextMonthYear, nextMonthIndex + 1, 0).getDate();
+    const effectiveDayNextMonth = Math.min(dueDay, lastDayNextMonth);
+    return new Date(nextMonthYear, nextMonthIndex, effectiveDayNextMonth);
   };
 
   const getLastFourDigits = (cardNumber: string) => {
@@ -148,7 +173,7 @@ export default function CustomerViewModal({
     try {
       await loadCustomerData();
     } catch (error) {
-      console.error('Error refreshing customer data after payment:', error);
+      debugError('Error refreshing customer data after payment:', error);
       // If refresh fails, at least we have the optimistic update
     }
   };
@@ -198,7 +223,7 @@ export default function CustomerViewModal({
         throw new Error('Failed to generate bill');
       }
     } catch (error) {
-      console.error('Error generating bill:', error);
+      debugError('Error generating bill:', error);
       alert('Failed to generate bill. Please try again.');
     } finally {
       setGeneratingBill(false);
@@ -499,7 +524,13 @@ export default function CustomerViewModal({
                             <td className="px-4 py-2">{card.card_type || "—"}</td>
                             <td className="px-4 py-2">{card.card_name || "—"}</td>
                             <td className="px-4 py-2 font-mono">{card.card_number || "—"}</td>
-                            <td className="px-4 py-2">{formatDate(card.due_date)}</td>
+                            <td className="px-4 py-2">{
+                              card.next_due_date
+                                ? formatDate(card.next_due_date)
+                                : (card.due_day 
+                                    ? formatDate(computeNextDueDateFromDueDay(card.due_day)!) 
+                                    : formatDate(card.due_date))
+                            }</td>
                           </tr>
                         ))}
                       </tbody>

@@ -47,13 +47,20 @@ export function DataTable({
   // Sort data
   const sortedData = [...filteredData].sort((a, b) => {
     if (!sortColumn) return 0;
-    
     const aValue = a[sortColumn];
     const bValue = b[sortColumn];
-    
-    if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
-    if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
-    return 0;
+
+    if (aValue == null && bValue == null) return 0;
+    if (aValue == null) return sortDirection === 'asc' ? -1 : 1;
+    if (bValue == null) return sortDirection === 'asc' ? 1 : -1;
+
+    if (typeof aValue === 'number' && typeof bValue === 'number') {
+      return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
+    }
+    const aStr = String(aValue).toLowerCase();
+    const bStr = String(bValue).toLowerCase();
+    const cmp = aStr.localeCompare(bStr, undefined, { numeric: true, sensitivity: 'base' });
+    return sortDirection === 'asc' ? cmp : -cmp;
   });
 
   // Paginate data
@@ -71,13 +78,18 @@ export function DataTable({
   };
 
   const handleExport = () => {
+    const escapeCSV = (val: any) => {
+      if (val === null || val === undefined) return '';
+      const str = String(val);
+      const escaped = str.replace(/"/g, '""');
+      const needsQuotes = /[",\n]/.test(str);
+      return needsQuotes ? `"${escaped}"` : escaped;
+    };
+
     const csvContent = [
-      columns.map(col => col.label).join(','),
+      columns.map(col => escapeCSV(col.label)).join(','),
       ...sortedData.map(row => 
-        columns.map(col => {
-          const value = row[col.key];
-          return typeof value === 'string' && value.includes(',') ? `"${value}"` : value;
-        }).join(',')
+        columns.map(col => escapeCSV(row[col.key])).join(',')
       )
     ].join('\n');
 

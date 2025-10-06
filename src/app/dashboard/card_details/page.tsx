@@ -4,6 +4,7 @@ import DataTable from "@/components/admin/DataTable";
 import CardDetailsFormModal from "@/components/admin/CardDetailsFormModal";
 import { schemas } from "@/lib/tableSchemas";
 import { useData } from "@/lib/context/DataContext";
+import { useToastHelpers } from "@/components/ui/Toast";
 
 const schema = schemas.card_details;
 
@@ -11,19 +12,18 @@ export default function CardDetailsPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
 
-  // Use the global data context
   const { 
     state: { cardDetails, loading, error }, 
     fetchCardDetails, 
     invalidateCache 
   } = useData();
 
-  // Fetch card details on mount
+  const { success, error: showError } = useToastHelpers();
+
   useEffect(() => {
     fetchCardDetails();
   }, [fetchCardDetails]);
 
-  // Transform card details to include customer names
   const rows = cardDetails.map((card: any) => ({
     ...card,
     customer_name: card.customer?.full_name || 'Unknown'
@@ -31,128 +31,91 @@ export default function CardDetailsPage() {
 
   const onSubmit = async (values: Record<string, any>) => {
     try {
-      console.log('Submitting card details:', values);
-      
-      // Make a clean copy of the values to send
       const dataToSubmit = { ...values };
-      
-      // Ensure we're sending the right data types
       if (dataToSubmit.customer_id) {
-        // Make sure customer_id is a number as expected by the database
         dataToSubmit.customer_id = Number(dataToSubmit.customer_id);
       }
-      
-      console.log('Final data to submit:', JSON.stringify(dataToSubmit, null, 2));
 
+      let res: Response;
       if (editing) {
-        console.log('Updating existing card details with ID:', editing.id);
-        const res = await fetch(`/api/${schema.table}/${editing.id}`, { 
+        res = await fetch(`/api/${schema.table}/${editing.id}`, { 
           method: 'PATCH', 
           headers: { 'Content-Type': 'application/json' }, 
           body: JSON.stringify(dataToSubmit) 
         });
-        
-        const responseText = await res.text();
-        console.log('Response status:', res.status);
-        console.log('Response text:', responseText);
-        
-        if (!res.ok) {
-          let errorMessage = 'Failed to update card details';
-          try {
-            const errorData = JSON.parse(responseText);
-            errorMessage = errorData.error || errorMessage;
-          } catch (parseError) {
-            console.error('Error parsing error response:', parseError);
-            console.error('Raw response text:', responseText);
-            // If we can't parse JSON, it might be HTML error page
-            if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
-              errorMessage = 'Server returned HTML error page instead of JSON. Check server logs.';
-            } else {
-              errorMessage = `Server error: ${responseText.substring(0, 200)}...`;
-            }
-          }
-          throw new Error(errorMessage);
-        }
       } else {
-        console.log('Creating new card details');
-        const res = await fetch(`/api/${schema.table}`, { 
+        res = await fetch(`/api/${schema.table}`, { 
           method: 'POST', 
           headers: { 'Content-Type': 'application/json' }, 
           body: JSON.stringify(dataToSubmit) 
         });
-        
-        const responseText = await res.text();
-        console.log('Response status:', res.status);
-        console.log('Response text:', responseText);
-        
-        if (!res.ok) {
-          let errorMessage = 'Failed to create card details';
-          try {
-            const errorData = JSON.parse(responseText);
-            errorMessage = errorData.error || errorMessage;
-          } catch (parseError) {
-            console.error('Error parsing error response:', parseError);
-            console.error('Raw response text:', responseText);
-            // If we can't parse JSON, it might be HTML error page
-            if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
-              errorMessage = 'Server returned HTML error page instead of JSON. Check server logs.';
-            } else {
-              errorMessage = `Server error: ${responseText.substring(0, 200)}...`;
-            }
-          }
-          throw new Error(errorMessage);
-        }
       }
-      
+
+      const responseText = await res.text();
+      if (!res.ok) {
+        let errorMessage = editing ? 'Failed to update card details' : 'Failed to create card details';
+        try {
+          const errorData = JSON.parse(responseText);
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+            errorMessage = 'Server error occurred. Please check server logs.';
+          } else if (responseText) {
+            errorMessage = responseText.substring(0, 200) + '...';
+          }
+        }
+        throw new Error(errorMessage);
+      }
       await fetchCardDetails({ forceRefresh: true });
+      success(editing ? 'Card updated successfully.' : 'Card added successfully.');
       setOpen(false);
     } catch (error) {
-      console.error('Submit error:', error);
       if (error instanceof Error) {
-        alert(`Error saving card details: ${error.message}`);
+        showError('Failed to save card details. Please try again.', error.message);
       } else {
-        alert('Error saving card details. Please try again.');
+        showError('Failed to save card details. Please try again.');
       }
     }
   };
 
   const onDelete = async (row: any) => {
     if (!confirm("Delete this record?")) return;
-    
     try {
-      console.log('Attempting to delete card with ID:', row.id);
       const res = await fetch(`/api/${schema.table}/${row.id}`, { method: 'DELETE' });
-      
-      console.log('Delete response status:', res.status, res.statusText);
-      console.log('Delete response ok:', res.ok);
-      
       if (!res.ok) {
         let errorMessage = 'Delete failed';
         try {
-          const errorData = await res.json();
-          console.log('Error response data:', errorData);
-          errorMessage = errorData.error || errorMessage;
-        } catch (parseError) {
-          console.log('Failed to parse error response:', parseError);
-          // If response is not JSON, use status text
+          const raw = await res.text();
+          if (raw) {
+            try {
+              const data = JSON.parse(raw);
+              errorMessage = (data && (data.error || data.message)) || errorMessage;
+            } catch {
+              if (raw.includes('<html') || raw.includes('<!DOCTYPE')) {
+                errorMessage = 'Server error occurred. Please check server logs.';
+              } else {
+                errorMessage = raw.substring(0, 200) + '...';
+              }
+            }
+          } else {
+            errorMessage = res.statusText || `HTTP ${res.status}`;
+          }
+        } catch {
           errorMessage = res.statusText || `HTTP ${res.status}`;
         }
         throw new Error(errorMessage);
       }
-      
-      console.log('Delete successful, refreshing data...');
       await fetchCardDetails({ forceRefresh: true });
+      success('Card deleted successfully.');
     } catch (error) {
-      console.error('Delete error:', error);
       if (error instanceof Error) {
-        alert(`Error deleting record: ${error.message}`);
+        showError('Failed to delete card. Please try again.', error.message);
       } else {
-        alert('Error deleting record. Please try again.');
+        showError('Failed to delete card. Please try again.');
       }
     }
   };
 
-  // Show error state if there's an error
   if (error.cardDetails) {
     return (
       <div className="space-y-4">
@@ -181,7 +144,6 @@ export default function CardDetailsPage() {
         </div>
       </div>
 
-      {/* Loading State */}
       {loading.cardDetails && (
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
@@ -189,7 +151,6 @@ export default function CardDetailsPage() {
         </div>
       )}
 
-      {/* Data Table */}
       {!loading.cardDetails && (
         <DataTable 
           data={rows} 

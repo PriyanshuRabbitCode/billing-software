@@ -111,30 +111,30 @@ export async function GET(request: NextRequest) {
     // Include customer data if requested
     if (include.includes('customer') && transactions.length > 0) {
       const customerIds = [...new Set(transactions.map(t => t.customer_id))];
-      const customerQuery = `
-        SELECT id, full_name, email_id, contact_no 
-        FROM customers 
-        WHERE id = ANY($1)
-      `;
-      const { rows: customers } = await query(customerQuery, [customerIds]);
-      
-      const customerMap = new Map(customers.map(c => [c.id, c]));
-      transactions.forEach(transaction => {
-        transaction.customer = customerMap.get(transaction.customer_id);
-      });
+      if (customerIds.length > 0) {
+        const customerQuery = `
+          SELECT id, full_name, email_id, contact_no 
+          FROM customers 
+          WHERE id = ANY($1::int[])
+        `;
+        const { rows: customers } = await query(customerQuery, [customerIds]);
+        const customerMap = new Map(customers.map(c => [c.id, c]));
+        transactions.forEach(transaction => {
+          transaction.customer = customerMap.get(transaction.customer_id);
+        });
+      }
     }
 
     // Include card details if requested or if card_number exists
-    if (include.includes('cards') || transactions.some(t => t.card_number)) {
+    if ((include.includes('cards') || transactions.some(t => t.card_number)) && transactions.length > 0) {
       const cardNumbers = [...new Set(transactions.map(t => t.card_number).filter(Boolean))];
       if (cardNumbers.length > 0) {
         const cardQuery = `
           SELECT card_number, card_name, bank_name, card_type
           FROM card_details 
-          WHERE card_number = ANY($1)
+          WHERE card_number = ANY($1::text[])
         `;
         const { rows: cards } = await query(cardQuery, [cardNumbers]);
-        
         const cardMap = new Map(cards.map(c => [c.card_number, c]));
         transactions.forEach(transaction => {
           if (transaction.card_number) {
@@ -144,8 +144,9 @@ export async function GET(request: NextRequest) {
               if (!transaction.card_name) {
                 transaction.card_name = cardDetails.card_name;
               }
-              transaction.bank_name = cardDetails.bank_name;
-              transaction.card_type = cardDetails.card_type;
+              // Attach extra info for client rendering convenience
+              (transaction as any).bank_name = cardDetails.bank_name;
+              (transaction as any).card_type = cardDetails.card_type;
             }
           }
         });
@@ -205,6 +206,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Normalize numeric inputs (map empty string/undefined to null, numbers otherwise)
+    const payableAmountNum = (payable_amount === '' || payable_amount === undefined) ? null : (payable_amount !== null ? Number(payable_amount) : null);
+    const taxRateNumInput = (tax_rate === '' || tax_rate === undefined) ? null : (tax_rate !== null ? Number(tax_rate) : null);
+    const taxAmountNumInput = (tax_amount === '' || tax_amount === undefined) ? null : (tax_amount !== null ? Number(tax_amount) : null);
+    const mdrRateNumInput = (mdr_amount === '' || mdr_amount === undefined) ? null : (mdr_amount !== null ? Number(mdr_amount) : null);
+    const mdrChargeNumInput = (mdr_charge_amount === '' || mdr_charge_amount === undefined) ? null : (mdr_charge_amount !== null ? Number(mdr_charge_amount) : null);
+    const profitNumInput = (profit_amount === '' || profit_amount === undefined) ? null : (profit_amount !== null ? Number(profit_amount) : null);
+    const pendingNumInput = (pending_amount === '' || pending_amount === undefined) ? null : (pending_amount !== null ? Number(pending_amount) : null);
+    const addTaxBool = Boolean(add_tax_to_withdraw);
+
     // Check if at least one amount is provided
     if (!deposit_amount && !withdraw_amount) {
       return NextResponse.json(
@@ -214,8 +225,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if withdraw amount is greater than deposit amount
-    const deposit = parseFloat(deposit_amount || 0);
-    const withdraw = parseFloat(withdraw_amount || 0);
+    const deposit = (deposit_amount === '' || deposit_amount === undefined || deposit_amount === null) ? 0 : Number(deposit_amount);
+    const withdraw = (withdraw_amount === '' || withdraw_amount === undefined || withdraw_amount === null) ? 0 : Number(withdraw_amount);
     if (withdraw > deposit) {
       return NextResponse.json(
         { success: false, error: 'Withdraw Amount cannot be greater than Deposit Amount' },
@@ -225,7 +236,6 @@ export async function POST(request: NextRequest) {
 
     // Credit Limit Validation
     try {
-      
       // Get customer's account information (credit_allowed and credit_limit)
       const { rows: accountInfo } = await query(
         'SELECT credit_allowed, credit_limit FROM accounts WHERE customer_id = $1',
@@ -234,67 +244,47 @@ export async function POST(request: NextRequest) {
 
       if (accountInfo.length > 0) {
         const { credit_allowed, credit_limit } = accountInfo[0];
-        
-        // Only check credit limit if credit is allowed and limit is set
         const creditLimitNum = parseFloat(credit_limit);
-        
-        
         if (credit_allowed && credit_limit && creditLimitNum > 0) {
           // Calculate current total pending amount for this customer
           const { rows: currentPending } = await query(
             'SELECT COALESCE(SUM(pending_amount), 0) as total_pending FROM transactions WHERE customer_id = $1',
             [customer_id]
           );
-          
           const currentTotalPending = parseFloat(currentPending[0]?.total_pending || 0);
-          
+
           // Calculate what the new pending amount would be after this transaction
           let transactionPendingAmount = 0;
-          if (add_tax_to_withdraw) {
+          if (addTaxBool) {
             // If tax is added to withdraw: Pending = Deposit - Withdraw
             transactionPendingAmount = deposit - withdraw;
           } else {
             // If tax is not added to withdraw: Pending = (Deposit - Withdraw) + Tax Amount
-            const taxAmount = parseFloat(tax_amount || 0);
-            transactionPendingAmount = (deposit - withdraw) + taxAmount;
+            const taxAmountForPending = taxAmountNumInput || 0;
+            transactionPendingAmount = (deposit - withdraw) + taxAmountForPending;
           }
-          
+
           // Calculate new total pending amount
           const newTotalPending = currentTotalPending + transactionPendingAmount;
-          
-          
+
           // Check if current total pending already exceeds credit limit
           if (currentTotalPending > creditLimitNum) {
             return NextResponse.json(
               { 
                 success: false, 
-                error: `⚠️ Transaction Declined:
-This payment cannot be processed because your current pending transactions already exceed your credit limit.
-
-Credit Limit: ₹${creditLimitNum.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-Current Pending Transactions: ₹${currentTotalPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-
-Please clear your pending dues before making new transactions.` 
+                error: `⚠️ Transaction Declined:\nThis payment cannot be processed because your current pending transactions already exceed your credit limit.\n\nCredit Limit: ₹${creditLimitNum.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\nCurrent Pending Transactions: ₹${currentTotalPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n\nPlease clear your pending dues before making new transactions.` 
               },
               { status: 400 }
             );
           }
-          
+
           // Check if new transaction would exceed credit limit
           if (newTotalPending > creditLimitNum) {
             const transactionAmount = newTotalPending - currentTotalPending;
             return NextResponse.json(
               { 
                 success: false, 
-                error: `⚠️ Transaction Declined:
-This payment cannot be processed because it would exceed your credit limit.
-
-Credit Limit: ₹${creditLimitNum.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-Current Pending Transactions: ₹${currentTotalPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-This Transaction Amount: ₹${transactionAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-Resulting Total: ₹${newTotalPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (exceeds limit)
-
-Please try again with a lower amount or clear pending dues.` 
+                error: `⚠️ Transaction Declined:\nThis payment cannot be processed because it would exceed your credit limit.\n\nCredit Limit: ₹${creditLimitNum.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\nCurrent Pending Transactions: ₹${currentTotalPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\nThis Transaction Amount: ₹${transactionAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\nResulting Total: ₹${newTotalPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (exceeds limit)\n\nPlease try again with a lower amount or clear pending dues.` 
               },
               { status: 400 }
             );
@@ -302,9 +292,7 @@ Please try again with a lower amount or clear pending dues.`
         }
       }
     } catch (error) {
-      console.warn('Failed to validate credit limit:', error);
-      // Don't fail the transaction if credit limit validation fails
-      // This ensures backward compatibility if accounts table doesn't exist or has issues
+      // Suppressed verbose warning in production
     }
 
     // Auto-fill default values from card if not provided
@@ -339,40 +327,39 @@ Please try again with a lower amount or clear pending dues.`
           }
         }
       } catch (error) {
-        console.warn('Failed to fetch card defaults:', error);
-        // Don't fail the transaction if card defaults can't be fetched
+        // Suppressed verbose warning in production
       }
     }
 
     // Calculate tax amount, MDR charge amount, and profit amount if not provided
-    let finalTaxAmount = tax_amount;
-    let finalMdrChargeAmount = mdr_charge_amount;
-    let finalProfitAmount = profit_amount;
+    let finalTaxAmount = taxAmountNumInput ?? undefined;
+    let finalMdrChargeAmount = mdrChargeNumInput ?? undefined;
+    let finalProfitAmount = profitNumInput ?? undefined;
 
     if (withdraw > 0 && finalPosType && finalTaxRate && finalMdrRate) {
       // Calculate Tax Amount: (Tax Rate % × Withdraw Amount) / 100
-      if (!finalTaxAmount) {
-        finalTaxAmount = (parseFloat(finalTaxRate) * withdraw) / 100;
+      if (finalTaxAmount === undefined) {
+        finalTaxAmount = (parseFloat(finalTaxRate as any) * withdraw) / 100;
       }
       
       // Calculate MDR Charge Amount: (MDR % × Withdraw Amount) / 100
-      if (!finalMdrChargeAmount) {
-        finalMdrChargeAmount = (parseFloat(finalMdrRate) * withdraw) / 100;
+      if (finalMdrChargeAmount === undefined) {
+        finalMdrChargeAmount = (parseFloat(finalMdrRate as any) * withdraw) / 100;
       }
       
       // Calculate Profit Amount: Tax Amount - MDR Charge Amount
-      if (!finalProfitAmount) {
-        finalProfitAmount = finalTaxAmount - finalMdrChargeAmount;
+      if (finalProfitAmount === undefined) {
+        finalProfitAmount = (finalTaxAmount || 0) - (finalMdrChargeAmount || 0);
       }
     }
 
     // Calculate pending amount and status if not provided
-    let finalPendingAmount = pending_amount;
+    let finalPendingAmount = pendingNumInput ?? undefined;
     let finalStatus = status;
 
     if (finalPendingAmount === undefined || finalStatus === undefined) {
-      const taxAmount = parseFloat(finalTaxAmount || 0);
-      const addTax = add_tax_to_withdraw || false;
+      const taxAmountCalc = Number(finalTaxAmount || 0);
+      const addTax = addTaxBool || false;
       
       let pending = 0;
       if (addTax) {
@@ -382,7 +369,7 @@ Please try again with a lower amount or clear pending dues.`
       } else {
         // If checkbox is not checked: Tax amount is added to Pending Amount
         // Pending amount = (Deposit Amount - Withdraw Amount) + Tax Amount
-        pending = (deposit - withdraw) + taxAmount;
+        pending = (deposit - withdraw) + taxAmountCalc;
       }
       
       // Determine status
@@ -397,6 +384,19 @@ Please try again with a lower amount or clear pending dues.`
       finalPendingAmount = pending;
     }
 
+    // Ensure numeric values before insert
+    const toNumberOrNull = (val: any): number | null => {
+      if (val === undefined || val === null || val === '') return null;
+      const n = Number(val);
+      return isNaN(n) ? null : n;
+    };
+    const finalTaxRateNum = toNumberOrNull(finalTaxRate);
+    const finalMdrRateNum = toNumberOrNull(finalMdrRate);
+    const finalTaxAmountNum = toNumberOrNull(finalTaxAmount);
+    const finalMdrChargeAmountNum = toNumberOrNull(finalMdrChargeAmount);
+    const finalProfitAmountNum = toNumberOrNull(finalProfitAmount);
+    const finalPendingAmountNum = toNumberOrNull(finalPendingAmount);
+    
     // Insert transaction
     const insertQuery = `
       INSERT INTO transactions (
@@ -409,9 +409,9 @@ Please try again with a lower amount or clear pending dues.`
     `;
     
     const { rows } = await query(insertQuery, [
-      customer_id, card_number, card_name, deposit_amount, withdraw_amount,
-      payable_amount, add_tax_to_withdraw, finalPosType, finalTaxRate, finalTaxAmount,
-      finalMdrRate, finalMdrChargeAmount, finalProfitAmount, finalPendingAmount, finalStatus
+      customer_id, card_number, card_name, deposit, withdraw,
+      payableAmountNum, addTaxBool, finalPosType, finalTaxRateNum, finalTaxAmountNum,
+      finalMdrRateNum, finalMdrChargeAmountNum, finalProfitAmountNum, finalPendingAmountNum, finalStatus
     ]);
 
     return NextResponse.json({
@@ -421,7 +421,7 @@ Please try again with a lower amount or clear pending dues.`
     }, { status: 201 });
 
   } catch (error) {
-    console.error('Transactions POST error:', error);
+    // Suppressed verbose server error logging in production
     return NextResponse.json(
       { 
         success: false, 

@@ -27,7 +27,7 @@ interface DashboardData {
 }
 
 interface UseDashboardOptions {
-  period?: 'daily' | 'weekly' | 'monthly' | 'yearly';
+  period?: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom';
   startDate?: string;
   endDate?: string;
   forceRefresh?: boolean;
@@ -73,7 +73,7 @@ export function useDashboard(options: UseDashboardOptions = {}): UseDashboardRes
           cards: result.data.totalCards,
           transactions: result.data.totalTransactions,
           pending: result.data.totalPendingAmount,
-          revenue: result.data.monthlyStats.totalProfit
+          revenue: result.data.totalRevenue ?? result.data.monthlyStats.totalProfit
         },
         recent: result.data.recentTransactions,
         cardPendingAmounts: {

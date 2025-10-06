@@ -124,7 +124,7 @@ export async function PATCH(
 
     const updateQuery = `
       UPDATE transactions 
-      SET ${updates.join(', ')}, updated_at = NOW()
+      SET ${updates.join(', ')}
       WHERE id = $${paramIndex}
       RETURNING *
     `;

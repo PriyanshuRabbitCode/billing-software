@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 
 import { schemas } from "@/lib/tableSchemas";
 import SearchableCustomerInput from "./SearchableCustomerInput";
-import PopupModal from "../ui/PopupModal";
 
 interface CardDetailsFormModalProps {
   open: boolean;
@@ -28,10 +27,7 @@ export default function CardDetailsFormModal({
   const [availableCards, setAvailableCards] = useState<string[]>([]);
   const [isFormActive, setIsFormActive] = useState(false);
   
-  // Debug: Log whenever values change
-  useEffect(() => {
-    console.log('Form values changed:', values);
-  }, [values]);
+
   const [popup, setPopup] = useState<{
     open: boolean;
     title: string;
@@ -75,48 +71,31 @@ export default function CardDetailsFormModal({
 
   // Update available card names based on selected bank and type
   const updateAvailableCards = useCallback((bankName: string, cardType: string) => {
-    console.log('updateAvailableCards called with:', { bankName, cardType });
-    
     if (!bankName || !cardType) {
-      console.log('Missing bank name or card type, clearing available cards');
       setAvailableCards([]);
       return;
     }
-    
-    // Get the card mapping from schema
     const cardNameField = schema.fields.find(f => f.name === 'card_name');
     const cardsByBank = (cardNameField as any)?.cardsByBank;
-    
     if (!cardsByBank) {
-      console.log('No cardsByBank mapping found, falling back to all cards');
       const allCards = cardNameField?.enumValues || [];
       setAvailableCards(allCards);
       return;
     }
-    
-    // Get the specific cards for this bank and card type
     const bankCards = cardsByBank[bankName];
     if (!bankCards) {
-      console.log('No cards found for bank:', bankName);
       setAvailableCards([]);
       return;
     }
-    
     const typeCards = bankCards[cardType];
     if (!typeCards) {
-      console.log('No cards found for bank + type:', { bankName, cardType });
       setAvailableCards([]);
       return;
     }
-    
-    console.log('Filtered cards for', bankName, '+', cardType, ':', typeCards);
     setAvailableCards(typeCards);
-    
-    // If current card name is not in the filtered list, clear it
     setValues(prev => {
       const currentCardName = prev.card_name as string | undefined;
       if (currentCardName && !typeCards.includes(currentCardName)) {
-        console.log('Current card name not valid for this bank+type, clearing');
         return { ...prev, card_name: '' };
       }
       return prev;
@@ -134,19 +113,16 @@ export default function CardDetailsFormModal({
 
   // Initialize form values when the modal opens or when editing
   useEffect(() => {
-    // Only initialize when modal is open and we don't have values yet or when initial changes from parent
     if (!open) return;
     if (Object.keys(values).length === 0 || initial !== null) {
       const v: Record<string, string | number | boolean | null> = {};
       fields.forEach((f) => {
         const initialValue = initial?.[f.name];
         if (initialValue !== undefined && initialValue !== null) {
-          // Handle date fields - convert ISO string to YYYY-MM-DD format for HTML date input
           if (f.type === "datetime" && initialValue) {
             try {
               const date = new Date(initialValue as string);
               if (!isNaN(date.getTime())) {
-                // Convert to local date in YYYY-MM-DD format for HTML date input
                 const year = date.getFullYear();
                 const month = String(date.getMonth() + 1).padStart(2, '0');
                 const day = String(date.getDate()).padStart(2, '0');
@@ -156,7 +132,6 @@ export default function CardDetailsFormModal({
                 v[f.name] = "";
               }
             } catch (error) {
-              console.error('Error parsing date:', error);
               v[f.name] = "";
             }
           } else {
@@ -166,47 +141,89 @@ export default function CardDetailsFormModal({
           v[f.name] = f.type === "boolean" ? false : "";
         }
       });
-      console.log('Setting form values:', v);
-      console.log('Initial values received:', initial);
-      console.log('Fields from schema:', fields.map(f => f.name));
       setValues(v);
-      
-      // Update available cards if bank and type are set
       if (v.bank_name && v.card_type) {
-        console.log('Initializing with bank and type, updating available cards');
         updateAvailableCards(v.bank_name as string, v.card_type as string);
       }
-      
-      // Reset form active state on initialization
       setIsFormActive(false);
     }
   }, [open, initial, fields, updateAvailableCards]);
 
-  // Load customer options for initial value display
-  // Removed extra /api/customers fetch to avoid duplicate calls; rely on DataContext in SearchableCustomerInput
-
+  // Real-time duplicate card number check (on blur or submit)
+  const checkDuplicateCardNumber = useCallback(async (cardNumberInput?: string): Promise<boolean> => {
+    const raw = typeof cardNumberInput === 'string' ? cardNumberInput : (values.card_number as string) ?? '';
+    const cleanCardNumber = raw.replace(/\s+/g, '');
+    if (initial?.card_number && String(initial.card_number).replace(/\s+/g, '') === cleanCardNumber) {
+      setErrors(prev => {
+        const { card_number, ...rest } = prev;
+        return rest;
+      });
+      return false;
+    }
+    if (!cleanCardNumber || !/^\d{16}$/.test(cleanCardNumber)) {
+      return false;
+    }
+    try {
+      const res = await fetch(`/api/cards?card_number=${encodeURIComponent(cleanCardNumber)}&limit=10`);
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.data) && data.data.length > 0) {
+        const conflict = data.data.find((item: any) => {
+          const sameNumber = String(item.card_number) === cleanCardNumber;
+          const differentId = initial?.id ? item.id !== (initial.id as number) : true;
+          return sameNumber && differentId;
+        });
+        if (conflict) {
+          setErrors(prev => ({ ...prev, card_number: "Card already exists with this number." }));
+          return true;
+        }
+      }
+      setErrors(prev => {
+        const { card_number, ...rest } = prev;
+        return rest;
+      });
+      return false;
+    } catch {
+      return false;
+    }
+  }, [values.card_number, initial]);
 
   // Handle field change
   const handleChange = (name: string, value: string | number | boolean | null) => {
     let newValues = { ...values, [name]: value } as Record<string, string | number | boolean | null>;
-    console.log(`Field ${name} changed to:`, value);
-    console.log('New form values:', newValues);
-    
-    // Mark form as active when user starts interacting
     if (!isFormActive) {
       setIsFormActive(true);
     }
-    
-    // When enabling defaults, drop Default POS Type values to remove functionality
     if (name === 'enable_defaults' && value === true) {
       newValues = { ...newValues, default_pos_type: '', custom_pos_type: '' };
     }
+    if (name === 'card_number') {
+      setErrors(prev => {
+        const { card_number, ...rest } = prev;
+        return rest;
+      });
+    }
     
+    // Real-time validation: Default MDR % cannot be greater than Default Tax Rate %
+    if (name === 'default_tax_rate' || name === 'default_mdr_rate') {
+      const taxRaw = name === 'default_tax_rate' ? value : newValues.default_tax_rate;
+      const mdrRaw = name === 'default_mdr_rate' ? value : newValues.default_mdr_rate;
+      const tax = taxRaw === '' || taxRaw === undefined || taxRaw === null ? null : Number(taxRaw as number | string);
+      const mdr = mdrRaw === '' || mdrRaw === undefined || mdrRaw === null ? null : Number(mdrRaw as number | string);
+      setErrors(prev => {
+        const next = { ...prev };
+        if (tax !== null && mdr !== null && !Number.isNaN(tax) && !Number.isNaN(mdr) && mdr > tax) {
+          next.default_mdr_rate = "Default MDR % can’t be greater than Default Tax Rate %";
+        } else {
+          const { default_mdr_rate, ...rest } = next;
+          return rest;
+        }
+        return next;
+      });
+    }
+
     setValues(newValues);
-    
     // Update available cards when bank or type changes
     if (name === 'bank_name' || name === 'card_type') {
-      console.log('Updating available cards for:', name, value);
       updateAvailableCards(
         name === 'bank_name' ? value as string : values.bank_name as string,
         name === 'card_type' ? value as string : values.card_type as string
@@ -217,29 +234,20 @@ export default function CardDetailsFormModal({
   // Validate form
   const validate = async (): Promise<boolean> => {
     const e: Record<string, string> = {};
-    
-    // Check required fields
     if (!values.customer_id) {
       e.customer_id = "Customer is required";
     }
-    
     if (!values.bank_name) {
       e.bank_name = "Bank Name is required";
     }
-    
     if (!values.card_type) {
       e.card_type = "Card Type is required";
     }
-    
     if (!values.card_name) {
       e.card_name = "Card Name is required";
     } else if (availableCards.length > 0 && !availableCards.includes(values.card_name as string)) {
       e.card_name = "Selected card is not valid for the chosen bank and type";
     }
-    
-    // Default POS Type functionality removed when defaults are enabled
-
-    // Business rule: When defaults enabled, MDR % cannot exceed Tax %
     if (values.enable_defaults) {
       const tax = values.default_tax_rate !== undefined && values.default_tax_rate !== null && String(values.default_tax_rate) !== ""
         ? Number(values.default_tax_rate)
@@ -253,82 +261,50 @@ export default function CardDetailsFormModal({
         }
       }
     }
-    
-    // Validate card number format if provided
     if (values.card_number) {
-      // Remove spaces and check if it's a valid card number format
       const cardNumber = (values.card_number as string).replace(/\s+/g, '');
-      
-      // Validate exactly 16 digits
       if (!/^\d{16}$/.test(cardNumber)) {
         e.card_number = "Card number must be exactly 16 digits";
       }
-      // Note: Duplicate card number validation is handled by the API
-      // No need to pre-check here as the API will return proper error messages
     }
-    
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
+  // Helper to sanitize payload before submit
+  const sanitizePayload = (vals: Record<string, string | number | boolean | null>) => {
+    const v: Record<string, any> = { ...vals };
+    if (v.card_number) {
+      v.card_number = String(v.card_number).replace(/\s+/g, '');
+    }
+    if (v.default_tax_rate === '' || v.default_tax_rate === undefined) v.default_tax_rate = null;
+    else if (v.default_tax_rate !== null) v.default_tax_rate = Number(v.default_tax_rate);
+    if (v.default_mdr_rate === '' || v.default_mdr_rate === undefined) v.default_mdr_rate = null;
+    else if (v.default_mdr_rate !== null) v.default_mdr_rate = Number(v.default_mdr_rate);
+    if (v.due_day === '' || v.due_day === undefined) v.due_day = null;
+    else if (v.due_day !== null) v.due_day = Number(v.due_day);
+    if (v.default_pos_type === '' || v.default_pos_type === 'Custom') v.default_pos_type = null;
+    if (v.custom_pos_type === '') v.custom_pos_type = null;
+    return v;
+  };
+
   // Submit form
   const submit = async () => {
-    console.log('Form values before validation:', values);
     const isValid = await validate();
     if (!isValid) {
-      console.log('Validation failed:', errors);
       return;
     }
-    
+    const isDuplicate = await checkDuplicateCardNumber();
+    if (isDuplicate) {
+      return;
+    }
     setLoading(true);
     try {
-      // Clean card number by removing spaces before submission (API will handle formatting)
-      if (values.card_number) {
-        values.card_number = (values.card_number as string).replace(/\s+/g, '');
-      }
-      
-      console.log('Submitting values:', values);
-      console.log('enable_defaults value:', values.enable_defaults);
-      // default_pos_type removed when defaults are enabled
-      console.log('default_tax_rate value:', values.default_tax_rate);
-      console.log('default_mdr_rate value:', values.default_mdr_rate);
-      
-      // Create a copy of values to avoid reference issues
-      const valuesToSubmit = { ...values };
-      
-      // Log the exact payload being sent
-      console.log('Final payload to submit:', JSON.stringify(valuesToSubmit, null, 2));
-      
-      try {
-        await onSubmit(valuesToSubmit);
-        handleClose();
-      } catch (submitError) {
-        console.error('Submit error details:', submitError);
-        throw submitError; // Re-throw to be caught by outer catch
-      }
+      const valuesToSubmit = sanitizePayload(values);
+      await onSubmit(valuesToSubmit);
+      handleClose();
     } catch (error) {
-      console.error('Submit error:', error);
-      
-      // More detailed error logging
-      if (error instanceof Error) {
-        console.error('Error name:', error.name);
-        console.error('Error message:', error.message);
-        console.error('Error stack:', error.stack);
-        setPopup({
-          open: true,
-          title: "Error",
-          message: `Error: ${error.message}`,
-          type: "error"
-        });
-      } else {
-        console.error('Unknown error type:', typeof error);
-        setPopup({
-          open: true,
-          title: "Error",
-          message: "An unknown error occurred",
-          type: "error"
-        });
-      }
+      // Rely on parent component to display toast error messages
     } finally {
       setLoading(false);
     }
@@ -440,6 +416,7 @@ export default function CardDetailsFormModal({
               type="text"
               value={(values.card_number as string) ?? ""}
               onChange={(e) => handleChange('card_number', e.target.value)}
+              onBlur={(e) => checkDuplicateCardNumber(e.target.value)}
               placeholder="XXXX XXXX XXXX XXXX"
               className="bg-gray-800 border border-gray-700 rounded px-3 py-2"
             />
@@ -448,15 +425,21 @@ export default function CardDetailsFormModal({
             )}
           </div>
 
-          {/* Due Date Field */}
+          {/* Due Day Field */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-400">Due Date</label>
+            <label className="text-xs text-gray-400">Due Day</label>
             <input
-              type="date"
-              value={(values.due_date as string) ?? ""}
-              onChange={(e) => handleChange('due_date', e.target.value)}
+              type="number"
+              min={1}
+              max={31}
+              value={(values.due_day as number | string) ?? ""}
+              onChange={(e) => handleChange('due_day', e.target.value ? Number(e.target.value) : "")}
+              placeholder="1-31"
               className="bg-gray-800 border border-gray-700 rounded px-3 py-2"
             />
+            {errors.due_day && (
+              <span className="text-xs text-red-400">{errors.due_day}</span>
+            )}
           </div>
         </div>
 
@@ -534,35 +517,6 @@ export default function CardDetailsFormModal({
           </button>
         </div>
       </div>
-      
-      <PopupModal
-        open={popup.open}
-        onClose={() => setPopup({ ...popup, open: false })}
-        title={popup.title}
-      >
-        <div className="text-center">
-          <p className="mb-4">{popup.message}</p>
-          {popup.showCancel && (
-            <div className="flex justify-center gap-3">
-              <button
-                onClick={() => {
-                  setPopup({ ...popup, open: false });
-                  popup.onConfirm?.();
-                }}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-500"
-              >
-                {popup.confirmText || "Confirm"}
-              </button>
-              <button
-                onClick={() => setPopup({ ...popup, open: false })}
-                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500"
-              >
-                {popup.cancelText || "Cancel"}
-              </button>
-            </div>
-          )}
-        </div>
-      </PopupModal>
     </div>
   );
 }

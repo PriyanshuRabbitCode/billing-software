@@ -11,6 +11,8 @@ interface CardWithRelations {
   card_name: string;
   card_number: string;
   due_date: string;
+  due_day?: number;
+  next_due_date?: string;
   enable_defaults?: boolean;
   default_pos_type?: string;
   default_tax_rate?: number;
@@ -42,7 +44,34 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search');
 
     // Build base query
-    let baseQuery = 'SELECT cd.* FROM card_details cd';
+    // ...
+    let baseQuery = `
+    SELECT 
+      cd.*, 
+      CASE 
+        WHEN cd.due_day IS NOT NULL THEN (
+          CASE 
+            WHEN make_date(
+              EXTRACT(YEAR FROM CURRENT_DATE)::int,
+              EXTRACT(MONTH FROM CURRENT_DATE)::int,
+              LEAST(cd.due_day, EXTRACT(DAY FROM (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day'))::int)
+            ) >= CURRENT_DATE
+            THEN make_date(
+              EXTRACT(YEAR FROM CURRENT_DATE)::int,
+              EXTRACT(MONTH FROM CURRENT_DATE)::int,
+              LEAST(cd.due_day, EXTRACT(DAY FROM (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day'))::int)
+            )
+            ELSE make_date(
+              EXTRACT(YEAR FROM (CURRENT_DATE + INTERVAL '1 month'))::int,
+              EXTRACT(MONTH FROM (CURRENT_DATE + INTERVAL '1 month'))::int,
+              LEAST(cd.due_day, EXTRACT(DAY FROM (date_trunc('month', CURRENT_DATE + INTERVAL '1 month') + INTERVAL '1 month' - INTERVAL '1 day'))::int)
+            )
+          END
+        )
+        ELSE cd.due_date
+      END AS next_due_date
+    FROM card_details cd
+    `;
     const queryParams: unknown[] = [];
     let paramIndex = 1;
 
@@ -93,7 +122,7 @@ export async function GET(request: NextRequest) {
       const customerQuery = `
         SELECT id, full_name, email_id, contact_no 
         FROM customers 
-        WHERE id = ANY($1)
+        WHERE id = ANY($1::int[])
       `;
       const { rows: customers } = await query(customerQuery, [customerIds]);
       
@@ -114,7 +143,7 @@ export async function GET(request: NextRequest) {
             COALESCE(SUM(withdraw_amount), 0) as total_withdrawals,
             COALESCE(SUM(pending_amount), 0) as pending_amount
           FROM transactions 
-          WHERE card_number = ANY($1)
+          WHERE card_number = ANY($1::text[])
           GROUP BY card_number
         `;
         const { rows: pendingData } = await query(pendingQuery, [cardNumbers]);
@@ -164,6 +193,7 @@ export async function POST(request: NextRequest) {
       card_name, 
       card_number, 
       due_date,
+      due_day,
       enable_defaults,
       default_pos_type,
       custom_pos_type,
@@ -177,6 +207,21 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'Missing required fields: customer_id, bank_name, card_type, card_name' },
         { status: 400 }
       );
+    }
+
+    // Validate default_pos_type against DB constraint
+    const allowedPosTypes = ['MP', 'PH', 'MOS'];
+    let posTypeToInsert: string | null | undefined = default_pos_type;
+    if (posTypeToInsert) {
+      if (posTypeToInsert === 'Custom') {
+        // Map UI "Custom" option to NULL for DB, use custom_pos_type for UI-only presets
+        posTypeToInsert = null;
+      } else if (!allowedPosTypes.includes(posTypeToInsert)) {
+        return NextResponse.json(
+          { success: false, error: `Invalid default_pos_type. Allowed values: ${allowedPosTypes.join(', ')}` },
+          { status: 400 }
+        );
+      }
     }
 
     // Validate card number format if provided
@@ -194,7 +239,7 @@ export async function POST(request: NextRequest) {
       
       // Check if card number already exists
       const existingCard = await query(
-        'SELECT id FROM card_details WHERE REPLACE(card_number, \' \', \'\') = $1',
+        "SELECT id FROM card_details WHERE REPLACE(card_number, ' ' , '') = $1",
         [cleanCardNumber]
       );
       if (existingCard.rows.length > 0) {
@@ -205,20 +250,67 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Normalize and validate due_day if provided
+    let normalizedDueDay: number | null = null;
+    if (due_day !== undefined && due_day !== null && (due_day as any) !== '') {
+      const n = typeof due_day === 'string' ? parseInt(due_day, 10) : Number(due_day);
+      if (Number.isNaN(n) || n <= 0 || n > 31) {
+        return NextResponse.json(
+          { success: false, error: 'due_day must be an integer between 1 and 31' },
+          { status: 400 }
+        );
+      }
+      normalizedDueDay = n;
+    }
+
+    // Helper to compute upcoming due date string (YYYY-MM-DD) from due_day
+    const computeUpcomingDueDate = (dueDay: number) => {
+      const today = new Date();
+      const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const year = today.getFullYear();
+      const month = today.getMonth(); // 0-based
+      const lastDayCurrentMonth = new Date(year, month + 1, 0).getDate();
+      const dayCurrent = Math.min(dueDay, lastDayCurrentMonth);
+      const candidate = new Date(year, month, dayCurrent);
+      candidate.setHours(0, 0, 0, 0);
+      if (candidate >= startOfToday) {
+        const yyyy = candidate.getFullYear();
+        const mm = String(candidate.getMonth() + 1).padStart(2, '0');
+        const dd = String(candidate.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+      }
+      const nextYear = month === 11 ? year + 1 : year;
+      const nextMonthIndex = (month + 1) % 12;
+      const lastDayNextMonth = new Date(nextYear, nextMonthIndex + 1, 0).getDate();
+      const dayNext = Math.min(dueDay, lastDayNextMonth);
+      const nextCandidate = new Date(nextYear, nextMonthIndex, dayNext);
+      nextCandidate.setHours(0, 0, 0, 0);
+      const yyyy2 = nextCandidate.getFullYear();
+      const mm2 = String(nextCandidate.getMonth() + 1).padStart(2, '0');
+      const dd2 = String(nextCandidate.getDate()).padStart(2, '0');
+      return `${yyyy2}-${mm2}-${dd2}`;
+    };
+
+    // Compute initial due_date when missing and due_day provided
+    let dueDateToInsert: string | null = due_date || null;
+    if (!dueDateToInsert && normalizedDueDay !== null) {
+      dueDateToInsert = computeUpcomingDueDate(normalizedDueDay);
+    }
+
     // Insert new card - clean card number by removing spaces before storing
     const cleanCardNumber = card_number ? card_number.replace(/\s/g, '') : null;
     
     const insertQuery = `
       INSERT INTO card_details (
-        customer_id, bank_name, card_type, card_name, card_number, due_date,
+        customer_id, bank_name, card_type, card_name, card_number, due_date, due_day,
         enable_defaults, default_pos_type, custom_pos_type, default_tax_rate, default_mdr_rate
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *
     `;
     const { rows } = await query(insertQuery, [
-      customer_id, bank_name, card_type, card_name, cleanCardNumber, due_date,
-      enable_defaults || false, default_pos_type || null, custom_pos_type || null, default_tax_rate || null, default_mdr_rate || null
+      customer_id, bank_name, card_type, card_name, cleanCardNumber, dueDateToInsert, normalizedDueDay,
+      enable_defaults || false, posTypeToInsert || null, custom_pos_type || null, default_tax_rate || null, default_mdr_rate || null
     ]);
 
     return NextResponse.json({

@@ -4,66 +4,24 @@ import DataTable from "@/components/admin/DataTable";
 import TransactionFormModal from "@/components/admin/TransactionFormModal";
 import { schemas } from "@/lib/tableSchemas";
 import { useData } from "@/lib/context/DataContext";
+import { useToastHelpers } from "@/components/ui/Toast";
 
 const schema = schemas.transactions;
 
 export default function TransactionsPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
-  const [totals, setTotals] = useState({
-    totalAmount: 0,
-    totalTax: 0,
-    totalProfit: 0,
-    totalPendingAmount: 0,
-    creditCount: 0,
-    debitCount: 0
-  });
 
-  // Use the global data context
   const { 
     state: { transactions, loading, error }, 
     fetchTransactions, 
     invalidateCache 
   } = useData();
 
+  const { success, error: showError } = useToastHelpers();
 
-
-  // Calculate totals from transaction rows
-  const calculateTotals = (transactions: any[]) => {
-    return transactions.reduce((acc, transaction) => {
-      const depositAmount = Number(transaction.deposit_amount) || 0;
-      const withdrawAmount = Number(transaction.withdraw_amount) || 0;
-      const taxAmount = Number(transaction.tax_amount) || 0;
-      const profitAmount = Number(transaction.profit_amount) || 0;
-      const pendingAmount = Number(transaction.pending_amount) || 0;
-
-      // Update totals
-      acc.totalAmount += depositAmount + withdrawAmount;  // Total of all amounts
-      acc.totalTax += taxAmount;
-      acc.totalProfit += profitAmount;
-      acc.totalPendingAmount += pendingAmount;
-
-      // Update transaction type counts based on amounts
-      if (depositAmount > 0) {
-        acc.creditCount++;
-      }
-      if (withdrawAmount > 0) {
-        acc.debitCount++;
-      }
-
-      return acc;
-    }, {
-      totalAmount: 0,
-      totalTax: 0,
-      totalProfit: 0,
-      totalPendingAmount: 0,
-      creditCount: 0,
-      debitCount: 0
-    });
-  };
-
-  // Fetch transactions on mount
-  useEffect(() => { 
+  // Trigger initial fetch of transactions on mount
+  useEffect(() => {
     fetchTransactions();
   }, [fetchTransactions]);
 
@@ -74,169 +32,201 @@ export default function TransactionsPage() {
   }));
 
   // Calculate totals whenever transactions change
+  const [totals, setTotals] = useState<{ deposit: number; withdraw: number; payable: number }>({ deposit: 0, withdraw: 0, payable: 0 });
+  const calculateTotals = useCallback((txs: any[]) => {
+    return txs.reduce((acc, tx) => {
+      acc.deposit += Number(tx.deposit_amount || 0);
+      acc.withdraw += Number(tx.withdraw_amount || 0);
+      acc.payable += Number(tx.payable_amount || 0);
+      return acc;
+    }, { deposit: 0, withdraw: 0, payable: 0 });
+  }, []);
+
   useEffect(() => {
     const totals = calculateTotals(transactions);
     setTotals(totals);
-  }, [transactions]);
+  }, [transactions, calculateTotals]);
 
-
+  const sanitizeTransactionPayload = (values: Record<string, any>) => {
+    const numericFields = [
+      'deposit_amount', 'withdraw_amount', 'payable_amount', 'tax_rate', 'tax_amount', 'mdr_amount', 'mdr_charge_amount', 'profit_amount', 'pending_amount'
+    ];
+    const v: Record<string, any> = { ...values };
+    for (const f of numericFields) {
+      if (v[f] === '' || v[f] === undefined) v[f] = null;
+      else if (v[f] !== null) v[f] = Number(v[f]);
+    }
+    if (v.customer_id) v.customer_id = Number(v.customer_id);
+    return v;
+  };
 
   const onSubmit = async (values: Record<string, any>) => {
     try {
-      console.log('Transaction onSubmit received values:', JSON.stringify(values, null, 2));
-      
-      // No validation needed here as it's handled in the modal
-
-      // Always use current date/time for new transactions
-      const currentDateTime = typeof window !== 'undefined' ? new Date().toISOString() : new Date().toISOString();
-      
-      // The values from the form are already in the correct format
-      // Just ensure transaction_date is set
+      const currentDateTime = new Date().toISOString();
       const updatedValues = {
         ...values,
         transaction_date: editing ? values.transaction_date : currentDateTime
       };
-      
-      console.log('Final transaction values to submit:', JSON.stringify(updatedValues, null, 2));
-      
-      // Remove any fields that aren't in the database schema
       const cleanValues = Object.fromEntries(
         Object.entries(updatedValues).filter(([key]) => {
-          // Get the field names from the schema
           const fieldNames = schema.fields.map(f => f.name);
           return fieldNames.includes(key);
         })
       );
-      
-      console.log('Cleaned transaction values:', JSON.stringify(cleanValues, null, 2));
+      const payload = sanitizeTransactionPayload(cleanValues);
 
       let response;
       if (editing) {
-        console.log(`Updating transaction with ID: ${editing.id}`);
         response = await fetch(`/api/${schema.table}/${editing.id}`, { 
           method: 'PATCH', 
           headers: { 'Content-Type': 'application/json' }, 
-          body: JSON.stringify(cleanValues) 
+          body: JSON.stringify(payload) 
         });
       } else {
-        console.log('Creating new transaction');
         response = await fetch(`/api/${schema.table}`, { 
           method: 'POST', 
           headers: { 'Content-Type': 'application/json' }, 
-          body: JSON.stringify(cleanValues) 
+          body: JSON.stringify(payload) 
         });
       }
-      
-      // Check if the request was successful
+
       if (!response.ok) {
-        const responseText = await response.text();
-        console.error('Error response status:', response.status);
-        console.error('Error response text:', responseText);
-        
         let errorMessage = 'Failed to save transaction';
         try {
-          const errorData = JSON.parse(responseText);
-          errorMessage = errorData.error || errorMessage;
-        } catch (parseError) {
-          console.error('Error parsing error response:', parseError);
+          // Read the body ONCE as text to avoid "body stream already read" errors
+          const raw = await response.text();
+          if (raw) {
+            // Try to parse JSON from the raw text
+            try {
+              const data = JSON.parse(raw);
+              errorMessage = (data && (data.error || data.message)) || errorMessage;
+            } catch {
+              // Not JSON: derive a meaningful message from raw text or status
+              if (raw.includes('<html') || raw.includes('<!DOCTYPE')) {
+                errorMessage = 'Server error occurred. Please check server logs.';
+              } else {
+                errorMessage = raw.substring(0, 200) + '...';
+              }
+            }
+          } else {
+            errorMessage = response.statusText || `HTTP ${response.status}`;
+          }
+        } catch {
+          errorMessage = response.statusText || `HTTP ${response.status}`;
         }
-        
         throw new Error(errorMessage);
       }
-      
-      // Successfully saved
-      console.log('Transaction saved successfully');
-      
-      // Invalidate cache to ensure dashboard data is fresh
-      invalidateCache();
-      
-      await fetchTransactions({ forceRefresh: true });
-      setOpen(false);
-      return await response.json();
-    } catch (err) {
-      console.error('Error saving transaction:', err);
-      if (err instanceof Error) {
-        alert(`Error saving transaction: ${err.message}`);
-      } else {
-        alert('Error saving transaction. Please try again.');
+
+      // Success path without parsing body again to avoid body stream issues
+      try {
+        invalidateCache();
+        await fetchTransactions({ forceRefresh: true });
+      } catch (refreshErr) {
+        // Swallow refresh errors to avoid surfacing as modal alerts; log for debugging
+        console.error('Post-save refresh failed:', refreshErr);
       }
-      throw err;
+      setOpen(false);
+      success('Transaction saved successfully');
+      return;
+    } catch (err) {
+      // Re-throw to let the modal handle error display and keep the form open
+      if (err instanceof Error) {
+        throw err;
+      } else {
+        throw new Error('Failed to save transaction.');
+      }
     }
   };
 
   const onDelete = async (row: any) => {
     if (!confirm("Delete this record?")) return;
-    await fetch(`/api/${schema.table}/${row.id}`, { method: 'DELETE' });
-    // Invalidate cache to ensure dashboard data is fresh
-    invalidateCache();
-    await fetchTransactions({ forceRefresh: true });
+    try {
+      const res = await fetch(`/api/${schema.table}/${row.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        let errorMessage = 'Delete failed';
+        try {
+          // Read the body ONCE as text to avoid "body stream already read" errors
+          const raw = await res.text();
+          if (raw) {
+            try {
+              const data = JSON.parse(raw);
+              errorMessage = (data && (data.error || data.message)) || errorMessage;
+            } catch {
+              if (raw.includes('<html') || raw.includes('<!DOCTYPE')) {
+                errorMessage = 'Server error occurred. Please check server logs.';
+              } else {
+                errorMessage = raw.substring(0, 200) + '...';
+              }
+            }
+          } else {
+            errorMessage = res.statusText || `HTTP ${res.status}`;
+          }
+        } catch {
+          errorMessage = res.statusText || `HTTP ${res.status}`;
+        }
+        throw new Error(errorMessage);
+      }
+      invalidateCache();
+      await fetchTransactions({ forceRefresh: true });
+      success('Transaction deleted successfully.');
+    } catch (error) {
+      if (error instanceof Error) {
+        showError('Failed to delete transaction.', error.message);
+      } else {
+        showError('Failed to delete transaction.');
+      }
+    }
   };
 
-  // Format currency
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(amount);
-  };
+  if (error.transactions) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-semibold">{schema.title}</h1>
+        </div>
+        <div className="bg-red-900/20 border border-red-500/50 rounded-xl p-6">
+          <h2 className="text-xl font-semibold text-red-400 mb-2">Error Loading Transactions</h2>
+          <p className="text-red-300 mb-4">{error.transactions}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">{schema.title}</h1>
         <div className="flex gap-2">
-          <button className="px-3 py-2 rounded bg-blue-600 text-white" onClick={() => { setEditing(null); setOpen(true); }}>Add New</button>
+          <button 
+            className="px-3 py-2 rounded bg-blue-600 text-white" 
+            onClick={() => { setEditing(null); setOpen(true); }}
+          >
+            New Transaction
+          </button>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
-          <h3 className="text-gray-400 text-sm font-medium">Total Base Amount</h3>
-          <p className="text-2xl font-bold text-white">{formatCurrency(totals.totalAmount)}</p>
-          <div className="mt-2 text-sm text-gray-400">
-            Credit: {totals.creditCount} | Debit: {totals.debitCount}
-          </div>
+      {loading.transactions && (
+        <div className="flex items-center justify-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+          <span className="ml-2 text-gray-400">Loading transactions...</span>
         </div>
+      )}
 
-        <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
-          <h3 className="text-gray-400 text-sm font-medium">Total Tax Amount</h3>
-          <p className="text-2xl font-bold text-white">{formatCurrency(totals.totalTax)}</p>
-          <div className="mt-2 text-sm text-gray-400">
-            Avg: {formatCurrency(totals.totalTax / (transactions.length || 1))}
-          </div>
-        </div>
+      {!loading.transactions && (
+        <DataTable 
+          data={rows} 
+          columns={schema.listColumns as any} 
+          showActions={false}
+        />
+      )}
 
-
-
-        <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
-          <h3 className="text-gray-400 text-sm font-medium">Total Profit</h3>
-          <p className="text-2xl font-bold text-white">{formatCurrency(totals.totalProfit)}</p>
-          <div className="mt-2 text-sm text-gray-400">
-            Avg: {formatCurrency(totals.totalProfit / (transactions.length || 1))}
-          </div>
-        </div>
-
-        <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
-          <h3 className="text-gray-400 text-sm font-medium">Total Pending Amount</h3>
-          <p className="text-2xl font-bold text-white">{formatCurrency(totals.totalPendingAmount)}</p>
-          <div className="mt-2 text-sm text-gray-400">
-            Base amounts only (tax paid immediately)
-          </div>
-        </div>
-      </div>
-
-
-
-      <DataTable data={rows} columns={schema.listColumns as any} onEdit={(r)=>{setEditing(r); setOpen(true);}} onDelete={onDelete} showActions={false} />
       <TransactionFormModal 
         open={open} 
-        onClose={()=>setOpen(false)} 
+        onClose={() => setOpen(false)} 
         initial={editing} 
         onSubmit={onSubmit} 
-        title={editing?`Edit ${schema.title}`:`Add ${schema.title}`} 
+        title={editing ? `Edit ${schema.title}` : `Add ${schema.title}`} 
       />
     </div>
   );

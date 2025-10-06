@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { useToastHelpers } from "@/components/ui/Toast";
 
 interface PaymentModalProps {
   open: boolean;
@@ -25,6 +26,7 @@ export default function PaymentModal({
   const [paidAmount, setPaidAmount] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
+  const { success, error: showError } = useToastHelpers();
 
   // Auto-fill pending amount when modal opens
   useEffect(() => {
@@ -96,7 +98,7 @@ export default function PaymentModal({
       onPaymentSuccess(cardData.card_number, result.data.newPendingAmount);
       
       // Show success message
-      alert(`Payment successful! ₹${amount} received via ${paymentMode}`);
+      success('Pending amount has been successfully paid.');
       
       onClose();
       
@@ -107,6 +109,7 @@ export default function PaymentModal({
       
     } catch (err: any) {
       setError(err.message || 'Payment failed. Please try again.');
+      showError('Failed to process payment. Please try again.', err.message);
     } finally {
       setLoading(false);
     }
@@ -145,16 +148,16 @@ export default function PaymentModal({
             <div className="space-y-2 text-sm">
               <div>
                 <span className="text-gray-400">Card Number:</span>
-                                  <span className="ml-2 text-white">{cardData.card_number}</span>
+                <span className="ml-2 text-white">{cardData.card_number}</span>
               </div>
               <div>
                 <span className="text-gray-400">Card Name:</span>
-                                  <span className="ml-2 text-white">{cardData.card_name}</span>
+                <span className="ml-2 text-white">{cardData.card_name}</span>
               </div>
-                              <div>
-                  <span className="text-gray-400">Customer Name:</span>
-                  <span className="ml-2 text-white">{cardData.customer_name}</span>
-                </div>
+              <div>
+                <span className="text-gray-400">Customer Name:</span>
+                <span className="ml-2 text-white">{cardData.customer_name}</span>
+              </div>
               <div>
                 <span className="text-gray-400">Pending Amount:</span>
                 <span className="ml-2 text-yellow-400 font-medium">
@@ -198,12 +201,12 @@ export default function PaymentModal({
               placeholder="0.00"
               step="0.01"
               min="0.01"
-                              max={cardData.pending_amount}
+              max={cardData.pending_amount}
               disabled={loading}
               required
             />
             <div className="text-xs text-gray-500 mt-1">
-                              Maximum: {formatCurrency(cardData.pending_amount)}
+              Maximum: {formatCurrency(cardData.pending_amount)}
             </div>
           </div>
 

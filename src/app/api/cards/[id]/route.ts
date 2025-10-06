@@ -112,25 +112,84 @@ export async function PATCH(
       );
     }
 
-    // No need to validate card number during updates - it was already validated during creation
-    // Card number uniqueness is enforced at the database level with UNIQUE constraint
-
     // Build update query - only update fields that have actually changed
     const allowedFields = [
       'bank_name', 'card_type', 'card_name', 'card_number', 'due_date',
-      'enable_defaults', 'default_pos_type', 'custom_pos_type', 'default_tax_rate', 'default_mdr_rate'
+      'enable_defaults', 'default_pos_type', 'custom_pos_type', 'default_tax_rate', 'default_mdr_rate', 'due_day'
     ];
     const updates: string[] = [];
     const values: unknown[] = [];
     let paramIndex = 1;
 
+    // Allowed POS types per DB constraint
+    const allowedPosTypes = ['MP', 'PH', 'MOS'];
+
+    // Track if due_day is being updated and its normalized value
+    let dueDayNew: number | null | undefined = undefined;
+    let dueDateExplicitlyUpdated = false;
+
     for (const [key, value] of Object.entries(body)) {
       if (allowedFields.includes(key) && value !== undefined) {
-        let processedValue = value;
-        
+        let processedValue: any = value;
+
+        // Normalize empty strings to NULL for numeric/integer fields
+        if ((key === 'default_tax_rate' || key === 'default_mdr_rate' || key === 'due_day') && processedValue === '') {
+          processedValue = null;
+        }
+        // Coerce string numbers to actual numbers for numeric fields
+        if ((key === 'default_tax_rate' || key === 'default_mdr_rate') && typeof processedValue === 'string' && processedValue !== '') {
+          const n = Number(processedValue);
+          if (isNaN(n) || n < 0) {
+            return NextResponse.json(
+              { success: false, error: `${key} must be a non-negative number` },
+              { status: 400 }
+            );
+          }
+          processedValue = n;
+        }
+        // Coerce due_day to integer
+        if (key === 'due_day') {
+          if (typeof processedValue === 'string' && processedValue !== '') {
+            const n = parseInt(processedValue, 10);
+            if (isNaN(n) || n <= 0 || n > 31) {
+              return NextResponse.json(
+                { success: false, error: 'due_day must be an integer between 1 and 31, or empty to clear' },
+                { status: 400 }
+              );
+            }
+            processedValue = n;
+          }
+          if (processedValue !== null && typeof processedValue === 'number') {
+            dueDayNew = processedValue;
+          } else {
+            dueDayNew = null;
+          }
+        }
+
         // Clean card number by removing spaces if it's being updated
-        if (key === 'card_number' && value && typeof value === 'string' && value !== existingCards[0][key]) {
-          processedValue = value.replace(/\s/g, '');
+        if (key === 'card_number' && processedValue && typeof processedValue === 'string' && processedValue !== existingCards[0][key]) {
+          processedValue = processedValue.replace(/\s/g, '');
+        }
+
+        // Map UI "Custom" default_pos_type to NULL; validate allowed values
+        if (key === 'default_pos_type') {
+          if (processedValue === '' || processedValue === 'Custom') {
+            processedValue = null;
+          } else if (processedValue && !allowedPosTypes.includes(processedValue)) {
+            return NextResponse.json(
+              { success: false, error: `Invalid default_pos_type. Allowed values: ${allowedPosTypes.join(', ')}` },
+              { status: 400 }
+            );
+          }
+        }
+
+        // Normalize empty custom_pos_type to NULL
+        if (key === 'custom_pos_type' && processedValue === '') {
+          processedValue = null;
+        }
+
+        if (key === 'due_date') {
+          dueDateExplicitlyUpdated = true;
         }
         
         // Only update if the value has actually changed
@@ -139,6 +198,45 @@ export async function PATCH(
           values.push(processedValue);
           paramIndex++;
         }
+      }
+    }
+
+    // If due_day is updated and due_date is NOT explicitly provided, compute upcoming due_date and include update
+    if (dueDayNew !== undefined && !dueDateExplicitlyUpdated) {
+      // Helper: compute upcoming due date from dueDay
+      const computeUpcomingDueDate = (dueDay: number | null): string | null => {
+        if (dueDay === null) return null;
+        const today = new Date();
+        const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const year = today.getFullYear();
+        const month = today.getMonth();
+        const lastDayCurrentMonth = new Date(year, month + 1, 0).getDate();
+        const dayCurrent = Math.min(dueDay, lastDayCurrentMonth);
+        const candidate = new Date(year, month, dayCurrent);
+        candidate.setHours(0, 0, 0, 0);
+        if (candidate >= startOfToday) {
+          const yyyy = candidate.getFullYear();
+          const mm = String(candidate.getMonth() + 1).padStart(2, '0');
+          const dd = String(candidate.getDate()).padStart(2, '0');
+          return `${yyyy}-${mm}-${dd}`;
+        }
+        const nextYear = month === 11 ? year + 1 : year;
+        const nextMonthIndex = (month + 1) % 12;
+        const lastDayNextMonth = new Date(nextYear, nextMonthIndex + 1, 0).getDate();
+        const dayNext = Math.min(dueDay, lastDayNextMonth);
+        const nextCandidate = new Date(nextYear, nextMonthIndex, dayNext);
+        nextCandidate.setHours(0, 0, 0, 0);
+        const yyyy2 = nextCandidate.getFullYear();
+        const mm2 = String(nextCandidate.getMonth() + 1).padStart(2, '0');
+        const dd2 = String(nextCandidate.getDate()).padStart(2, '0');
+        return `${yyyy2}-${mm2}-${dd2}`;
+      };
+
+      const computedDueDate = computeUpcomingDueDate(dueDayNew ?? null);
+      if (computedDueDate !== existingCards[0]['due_date']) {
+        updates.push(`due_date = $${paramIndex}`);
+        values.push(computedDueDate);
+        paramIndex++;
       }
     }
 

@@ -150,8 +150,9 @@ export default function ReportsPage() {
             disabled={!reportData || downloading === 'pdf'}
             variant="outline"
             size="sm"
+            className="text-blue-700 border-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-400 dark:hover:bg-blue-900/20"
           >
-            <FileText className="w-4 h-4 mr-2" />
+            <FileText className="w-4 h-4 mr-2 text-blue-700 dark:text-blue-400" />
             {downloading === 'pdf' ? 'Downloading...' : 'PDF'}
           </Button>
           <Button
@@ -159,8 +160,9 @@ export default function ReportsPage() {
             disabled={!reportData || downloading === 'excel'}
             variant="outline"
             size="sm"
+            className="text-green-700 border-green-700 hover:bg-green-50 dark:text-green-400 dark:border-green-400 dark:hover:bg-green-900/20"
           >
-            <Download className="w-4 h-4 mr-2" />
+            <Download className="w-4 h-4 mr-2 text-green-700 dark:text-green-400" />
             {downloading === 'excel' ? 'Downloading...' : 'Excel'}
           </Button>
           <Button
@@ -168,8 +170,9 @@ export default function ReportsPage() {
             disabled={!reportData || downloading === 'csv'}
             variant="outline"
             size="sm"
+            className="text-amber-700 border-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:border-amber-400 dark:hover:bg-amber-900/20"
           >
-            <Download className="w-4 h-4 mr-2" />
+            <Download className="w-4 h-4 mr-2 text-amber-700 dark:text-amber-400" />
             {downloading === 'csv' ? 'Downloading...' : 'CSV'}
           </Button>
         </div>

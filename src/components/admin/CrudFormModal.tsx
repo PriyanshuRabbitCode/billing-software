@@ -3,6 +3,11 @@
 import { useEffect, useState } from "react";
 import SearchableCustomerInput from "./SearchableCustomerInput";
 
+// Debug helpers to gate logs in production
+const DEBUG = process.env.NEXT_PUBLIC_DEBUG === 'true';
+const debugLog = (...args: any[]) => { if (DEBUG) console.log(...args); };
+const debugError = (...args: any[]) => { if (DEBUG) console.error(...args); };
+
 // Simple cache for customer options to avoid repeated /api/customers calls across modals
 let customerOptionsCache: Array<{ value: any; label: string }> | null = null;
 let customerOptionsPromise: Promise<Array<{ value: any; label: string }>> | null = null;
@@ -68,7 +73,7 @@ export default function CrudFormModal<T>({
         v[f.name] = f.type === "boolean" ? false : "";
       }
     });
-    console.log('Setting form values:', v);
+    debugLog('Setting form values:', v);
     setValues(v);
   }, [initial, fields]);
 
@@ -158,19 +163,19 @@ export default function CrudFormModal<T>({
   };
 
   const submit = async () => {
-    console.log('Form values before validation:', values);
+    debugLog('Form values before validation:', values);
     if (!validate()) {
-      console.log('Validation failed:', errors);
+      debugLog('Validation failed:', errors);
       return;
     }
     setLoading(true);
     try {
-      console.log('Submitting values:', values);
+      debugLog('Submitting values:', values);
       await onSubmit(values);
       setValues({}); // Reset form
       onClose();
     } catch (error) {
-      console.error('Submit error:', error);
+      debugError('Submit error:', error);
     } finally {
       setLoading(false);
     }

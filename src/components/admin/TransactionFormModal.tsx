@@ -2,6 +2,13 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import SearchableCustomerInput from "./SearchableCustomerInput";
+import { useToastHelpers } from "@/components/ui/Toast";
+
+// Debug helpers to gate console logs in production
+const DEBUG = process.env.NEXT_PUBLIC_DEBUG === 'true';
+const debugLog = (...args: any[]) => { if (DEBUG) console.log(...args); };
+const debugWarn = (...args: any[]) => { if (DEBUG) console.warn(...args); };
+const debugError = (...args: any[]) => { if (DEBUG) console.error(...args); };
 
 /**
  * TransactionFormModal - Add/Edit Transactions
@@ -81,7 +88,7 @@ export default function TransactionFormModal({
     current_pending: number;
   } | null>(null);
 
-  // MDR Rate mapping based on POS Type and Tax Rate
+  const { error: showError } = useToastHelpers();
   const MDR_MAPPING = {
     'MP': {
       '3.50': 1.50,
@@ -130,9 +137,6 @@ export default function TransactionFormModal({
 
   // Handle field change
   const handleChange = useCallback((name: string, value: any) => {
-    console.log(`🔄 handleChange called: ${name} = ${value}`);
-    console.log(`📝 Previous values:`, values);
-    
     setValues(prev => {
       const newValues = { ...prev, [name]: value };
       
@@ -144,20 +148,17 @@ export default function TransactionFormModal({
         }
       }
       
-      // Special handling for Tax Rate changes
+      // Special handling for Tax Rate changes: pre-calculate MDR silently
       if (name === 'tax_rate') {
-        console.log('💰 Tax Rate changed to:', value);
-        console.log('🎯 Current POS Type:', newValues.pos_type);
         if (newValues.pos_type) {
           const calculatedMDR = calculateMDRRate(newValues.pos_type, value);
-          console.log('🧮 Calculated MDR for new Tax Rate:', calculatedMDR);
+          void calculatedMDR;
         }
       }
       
-      console.log(`✅ New values after ${name} change:`, newValues);
       return newValues;
     });
-  }, [memoizedCardOptions, values, calculateMDRRate]);
+  }, [memoizedCardOptions, calculateMDRRate]);
 
   // Initialize form values
   useEffect(() => {
@@ -210,7 +211,7 @@ export default function TransactionFormModal({
           const customerData = result.data[0];
           setInitialCustomerName(customerData?.full_name || "");
         } catch (err) {
-          console.error('Error loading initial customer name:', err);
+          debugError('Error loading initial customer name:', err);
           setInitialCustomerName("");
         }
       } else {
@@ -223,7 +224,7 @@ export default function TransactionFormModal({
 
   // Debug: Log when values change
   useEffect(() => {
-    console.log('🔄 Values changed:', {
+    debugLog('🔄 Values changed:', {
       customer_id: values.customer_id,
       card_number: values.card_number,
       pos_type: values.pos_type,
@@ -232,7 +233,7 @@ export default function TransactionFormModal({
     });
     
     // Log the actual form field values to see if they're being updated
-    console.log('📊 Current form state:', {
+    debugLog('📊 Current form state:', {
       pos_type: values.pos_type,
       tax_rate: values.tax_rate,
       mdr_amount: values.mdr_amount,
@@ -275,7 +276,7 @@ export default function TransactionFormModal({
           setCreditInfo(null);
         }
       } catch (error) {
-        console.error('Error loading credit info:', error);
+        debugError('Error loading credit info:', error);
         setCreditInfo(null);
       }
     }
@@ -309,9 +310,9 @@ export default function TransactionFormModal({
           default_mdr_rate?: number;
         }>;
 
-        console.log('Valid cards found:', validCards.length);
-        console.log('🔍 Raw card data from API:', validCards);
-        console.log('Card details:', validCards.map(card => ({
+        debugLog('Valid cards found:', validCards.length);
+        debugLog('🔍 Raw card data from API:', validCards);
+        debugLog('Card details:', validCards.map(card => ({
           card_number: card.card_number,
           card_name: card.card_name,
           enable_defaults: card.enable_defaults,
@@ -325,7 +326,7 @@ export default function TransactionFormModal({
         
         // Check if any card has custom defaults
         const hasCustomDefaults = validCards.some(card => card.enable_defaults);
-        console.log('Has cards with custom defaults:', hasCustomDefaults);
+        debugLog('Has cards with custom defaults:', hasCustomDefaults);
         
         setCardOptions(validCards);
         
@@ -334,7 +335,7 @@ export default function TransactionFormModal({
           const cardWithDefaults = validCards.find(card => card.enable_defaults) || validCards[0];
           const selectedCard = cardWithDefaults;
           
-          console.log('Selected card for auto-fill:', {
+          debugLog('Selected card for auto-fill:', {
             card_number: selectedCard.card_number,
             card_name: selectedCard.card_name,
             enable_defaults: selectedCard.enable_defaults,
@@ -345,9 +346,9 @@ export default function TransactionFormModal({
           });
           
           // Set card number, name, and defaults in a single setValues call
-          console.log('About to call setValues for initial card loading...');
+          debugLog('About to call setValues for initial card loading...');
           setValues(prev => {
-            console.log('setValues callback executed with prev:', prev);
+            debugLog('setValues callback executed with prev:', prev);
             const updates: Record<string, any> = {
               card_number: selectedCard.card_number,
               card_name: selectedCard.card_name
@@ -356,8 +357,8 @@ export default function TransactionFormModal({
             // Step 4: Check card settings and apply appropriate defaults
             if (selectedCard.enable_defaults) {
               // Card has custom defaults - auto-fill them
-              console.log('Selected card has custom defaults, auto-filling...');
-              console.log('Selected card details:', {
+              debugLog('Selected card has custom defaults, auto-filling...');
+              debugLog('Selected card details:', {
                 enable_defaults: selectedCard.enable_defaults,
                 default_pos_type: selectedCard.default_pos_type,
                 custom_pos_type: selectedCard.custom_pos_type,
@@ -369,23 +370,23 @@ export default function TransactionFormModal({
                 // If POS Type is "Custom", use the custom_pos_type value
                 if (selectedCard.default_pos_type === 'Custom' && selectedCard.custom_pos_type) {
                   updates.pos_type = selectedCard.custom_pos_type;
-                  console.log('Using custom POS Type from selected card:', selectedCard.custom_pos_type);
+                  debugLog('Using custom POS Type from selected card:', selectedCard.custom_pos_type);
                 } else {
                   updates.pos_type = selectedCard.default_pos_type;
-                  console.log('Using predefined POS Type from selected card:', selectedCard.default_pos_type);
+                  debugLog('Using predefined POS Type from selected card:', selectedCard.default_pos_type);
                 }
               }
               if (selectedCard.default_tax_rate !== null && selectedCard.default_tax_rate !== undefined) {
                 updates.tax_rate = selectedCard.default_tax_rate.toString();
-                console.log('Using default Tax Rate from selected card:', selectedCard.default_tax_rate);
+                debugLog('Using default Tax Rate from selected card:', selectedCard.default_tax_rate);
               }
               if (selectedCard.default_mdr_rate !== null && selectedCard.default_mdr_rate !== undefined) {
                 updates.mdr_amount = selectedCard.default_mdr_rate.toString();
-                console.log('Using default MDR Rate from selected card:', selectedCard.default_mdr_rate);
+                debugLog('Using default MDR Rate from selected card:', selectedCard.default_mdr_rate);
               }
             } else {
               // Card has no custom defaults - apply system defaults
-              console.log('Selected card has no custom defaults, applying system defaults...');
+              debugLog('Selected card has no custom defaults, applying system defaults...');
               updates.pos_type = SYSTEM_DEFAULTS.POS_TYPE;
               updates.mdr_amount = SYSTEM_DEFAULTS.MDR_RATE.toString(); // Apply system default MDR
               // Tax Rate % remains empty - user must select manually
@@ -394,12 +395,12 @@ export default function TransactionFormModal({
             // Card defaults applied successfully
             
             const newValues = { ...prev, ...updates };
-            console.log('Initial card loading - Final values:', newValues);
+            debugLog('Initial card loading - Final values:', newValues);
             return newValues;
           });
         }
       } catch (err) {
-        console.error('Error loading card options:', err);
+        debugError('Error loading card options:', err);
         setCardOptions([]);
       }
     }
@@ -411,7 +412,7 @@ export default function TransactionFormModal({
 
     // Auto-fill default values when card is selected
   useEffect(() => {
-    console.log('Card selection effect triggered:', {
+    debugLog('Card selection effect triggered:', {
       card_number: values.card_number,
       memoizedCardOptions_length: memoizedCardOptions.length,
       memoizedCardOptions: memoizedCardOptions
@@ -420,7 +421,7 @@ export default function TransactionFormModal({
     if (values.card_number && memoizedCardOptions.length > 0) {
       const selectedCard = memoizedCardOptions.find(card => card.card_number === values.card_number);
       
-      console.log('Card selected for transaction:', {
+      debugLog('Card selected for transaction:', {
         card_number: selectedCard?.card_number,
         enable_defaults: selectedCard?.enable_defaults,
         default_pos_type: selectedCard?.default_pos_type,
@@ -431,8 +432,8 @@ export default function TransactionFormModal({
       
       if (selectedCard && selectedCard.enable_defaults) {
         // Card has custom defaults - auto-fill them
-        console.log('Auto-filling from card defaults...');
-        console.log('Selected card details:', {
+        debugLog('Auto-filling from card defaults...');
+        debugLog('Selected card details:', {
           enable_defaults: selectedCard.enable_defaults,
           default_pos_type: selectedCard.default_pos_type,
           custom_pos_type: selectedCard.custom_pos_type,
@@ -447,30 +448,30 @@ export default function TransactionFormModal({
             // If POS Type is "Custom", use the custom_pos_type value
             if (selectedCard.default_pos_type === 'Custom' && selectedCard.custom_pos_type) {
               updates.pos_type = selectedCard.custom_pos_type;
-              console.log('Using custom POS Type:', selectedCard.custom_pos_type);
+              debugLog('Using custom POS Type:', selectedCard.custom_pos_type);
             } else {
               updates.pos_type = selectedCard.default_pos_type;
-              console.log('Using predefined POS Type:', selectedCard.default_pos_type);
+              debugLog('Using predefined POS Type:', selectedCard.default_pos_type);
             }
           }
           if (selectedCard.default_tax_rate !== null && selectedCard.default_tax_rate !== undefined) {
             updates.tax_rate = selectedCard.default_tax_rate.toString();
-            console.log('Using default Tax Rate:', selectedCard.default_tax_rate);
+            debugLog('Using default Tax Rate:', selectedCard.default_tax_rate);
           }
           if (selectedCard.default_mdr_rate !== null && selectedCard.default_mdr_rate !== undefined) {
             updates.mdr_amount = selectedCard.default_mdr_rate.toString();
-            console.log('Using default MDR Rate:', selectedCard.default_mdr_rate);
+            debugLog('Using default MDR Rate:', selectedCard.default_mdr_rate);
           }
           
-          console.log('Final updates object:', updates);
-          console.log('Previous values:', prev);
+          debugLog('Final updates object:', updates);
+          debugLog('Previous values:', prev);
           const newValues = { ...prev, ...updates };
-          console.log('New values after update:', newValues);
+          debugLog('New values after update:', newValues);
           return newValues;
         });
       } else if (selectedCard && !selectedCard.enable_defaults) {
         // Card has no custom defaults - apply system defaults
-        console.log('Applying system defaults...');
+        debugLog('Applying system defaults...');
           setValues(prev => ({
             ...prev,
           pos_type: SYSTEM_DEFAULTS.POS_TYPE,
@@ -485,7 +486,7 @@ export default function TransactionFormModal({
   const customAutoFillProcessed = useRef(false);
   
   useEffect(() => {
-    console.log('🔍 POS Type change detected:', {
+    debugLog('🔍 POS Type change detected:', {
       pos_type: values.pos_type,
       card_number: values.card_number,
       memoizedCardOptions_length: memoizedCardOptions.length,
@@ -495,8 +496,8 @@ export default function TransactionFormModal({
     if (values.pos_type === 'Custom' && values.card_number && memoizedCardOptions.length > 0 && !customAutoFillProcessed.current) {
       const selectedCard = memoizedCardOptions.find(card => card.card_number === values.card_number);
       
-      console.log('✅ Custom POS Type selected, auto-filling from card defaults...');
-      console.log('📋 Selected card details:', {
+      debugLog('✅ Custom POS Type selected, auto-filling from card defaults...');
+      debugLog('📋 Selected card details:', {
         card_number: selectedCard?.card_number,
         card_name: selectedCard?.card_name,
         enable_defaults: selectedCard?.enable_defaults,
@@ -509,7 +510,7 @@ export default function TransactionFormModal({
       });
       
       if (selectedCard) {
-        console.log('🎯 Card found, proceeding with auto-fill...');
+        debugLog('🎯 Card found, proceeding with auto-fill...');
         
         // Mark as processed to prevent infinite loops
         customAutoFillProcessed.current = true;
@@ -519,13 +520,13 @@ export default function TransactionFormModal({
         // Use the card's custom POS Type value
         if (selectedCard.custom_pos_type) {
           updates.pos_type = selectedCard.custom_pos_type;
-          console.log('🔄 Setting POS Type to custom value:', selectedCard.custom_pos_type);
+          debugLog('🔄 Setting POS Type to custom value:', selectedCard.custom_pos_type);
         } else {
-          console.log('❌ No custom_pos_type found in card');
+          debugLog('❌ No custom_pos_type found in card');
         }
         
         // Use the card's default Tax Rate
-        console.log('🔍 Checking default_tax_rate:', {
+        debugLog('🔍 Checking default_tax_rate:', {
           value: selectedCard.default_tax_rate,
           type: typeof selectedCard.default_tax_rate,
           isNull: selectedCard.default_tax_rate === null,
@@ -536,13 +537,13 @@ export default function TransactionFormModal({
         
         if (selectedCard.default_tax_rate !== null && selectedCard.default_tax_rate !== undefined) {
           updates.tax_rate = selectedCard.default_tax_rate.toString();
-          console.log('✅ Setting Tax Rate to card default:', selectedCard.default_tax_rate);
+          debugLog('✅ Setting Tax Rate to card default:', selectedCard.default_tax_rate);
         } else {
-          console.log('❌ Tax Rate not set - value is null/undefined');
+          debugLog('❌ Tax Rate not set - value is null/undefined');
         }
         
         // Use the card's default MDR Rate
-        console.log('🔍 Checking default_mdr_rate:', {
+        debugLog('🔍 Checking default_mdr_rate:', {
           value: selectedCard.default_mdr_rate,
           type: typeof selectedCard.default_mdr_rate,
           isNull: selectedCard.default_mdr_rate === null,
@@ -553,35 +554,35 @@ export default function TransactionFormModal({
         
         if (selectedCard.default_mdr_rate !== null && selectedCard.default_mdr_rate !== undefined) {
           updates.mdr_amount = selectedCard.default_mdr_rate.toString();
-          console.log('✅ Setting MDR to card default:', selectedCard.default_mdr_rate);
+          debugLog('✅ Setting MDR to card default:', selectedCard.default_mdr_rate);
         } else {
-          console.log('❌ MDR not set - value is null/undefined');
+          debugLog('❌ MDR not set - value is null/undefined');
         }
         
-        console.log('📊 Final updates object:', updates);
-        console.log('🔢 Number of updates:', Object.keys(updates).length);
+        debugLog('📊 Final updates object:', updates);
+        debugLog('🔢 Number of updates:', Object.keys(updates).length);
         
         // Only update if we have values to set
         if (Object.keys(updates).length > 0) {
-          console.log('🚀 Calling setValues with updates:', updates);
+          debugLog('🚀 Calling setValues with updates:', updates);
           setValues(prev => {
-            console.log('📝 Previous values before update:', prev);
+            debugLog('📝 Previous values before update:', prev);
             const newValues = { ...prev, ...updates };
-            console.log('🆕 New values after custom auto-fill:', newValues);
+            debugLog('🆕 New values after custom auto-fill:', newValues);
             return newValues;
           });
         } else {
-          console.log('❌ No updates to apply - updates object is empty');
+          debugLog('❌ No updates to apply - updates object is empty');
         }
       } else {
-        console.log('❌ No card found for auto-fill');
+        debugLog('❌ No card found for auto-fill');
       }
     } else if (values.pos_type !== 'Custom') {
       // Reset the flag when POS Type changes to something other than Custom
-      console.log('🔄 Resetting customAutoFillProcessed flag - POS Type changed from Custom');
+      debugLog('🔄 Resetting customAutoFillProcessed flag - POS Type changed from Custom');
       customAutoFillProcessed.current = false;
     } else {
-      console.log('❌ Custom auto-fill conditions not met:', {
+      debugLog('❌ Custom auto-fill conditions not met:', {
         pos_type_is_custom: values.pos_type === 'Custom',
         has_card_number: !!values.card_number,
         has_card_options: memoizedCardOptions.length > 0,
@@ -592,7 +593,7 @@ export default function TransactionFormModal({
 
   // Auto-calculate MDR Rate when POS Type or Tax Rate changes
   useEffect(() => {
-    console.log('🎯 MDR Calculation Effect triggered:', {
+    debugLog('🎯 MDR Calculation Effect triggered:', {
       pos_type: values.pos_type,
       tax_rate: values.tax_rate,
       has_both: !!(values.pos_type && values.tax_rate)
@@ -602,7 +603,7 @@ export default function TransactionFormModal({
       const calculatedMDR = calculateMDRRate(values.pos_type, values.tax_rate);
       
       if (calculatedMDR !== null) {
-        console.log('🔄 MDR Auto-calculation triggered:', {
+        debugLog('🔄 MDR Auto-calculation triggered:', {
           pos_type: values.pos_type,
           tax_rate: values.tax_rate,
           calculated_mdr: calculatedMDR,
@@ -612,14 +613,14 @@ export default function TransactionFormModal({
         // Always update MDR when POS Type or Tax Rate changes
         // This ensures MDR stays in sync with the selected combination
         setValues(prev => {
-          console.log('📝 Updating MDR from', prev.mdr_amount, 'to', calculatedMDR.toString());
+          debugLog('📝 Updating MDR from', prev.mdr_amount, 'to', calculatedMDR.toString());
           return {
             ...prev,
             mdr_amount: calculatedMDR.toString()
           };
         });
       } else {
-        console.log('❌ No MDR mapping found for:', {
+        debugLog('❌ No MDR mapping found for:', {
           pos_type: values.pos_type,
           tax_rate: values.tax_rate
         });
@@ -803,20 +804,20 @@ Please try again with a lower amount or clear pending dues.`);
     const validation = validateForm();
     
     if (!validation.isValid) {
-      alert(`Validation Error:\n${validation.errors.join('\n')}`);
+      showError("Validation Error", validation.errors.join('\n'));
       return;
     }
     
     setLoading(true);
     try {
       await onSubmit(values);
-      onClose();
+      // Do not call onClose here; the parent onSubmit manages closing and success toast.
     } catch (error) {
-      console.error('Submit error:', error);
+      debugError('Submit error:', error);
       if (error instanceof Error) {
-        alert(`Error saving transaction: ${error.message}`);
+        showError('Error saving transaction', error.message);
       } else {
-        alert('Error saving transaction: Failed to save transaction.');
+        showError('Error saving transaction');
       }
     } finally {
       setLoading(false);

@@ -11,6 +11,7 @@ interface Customer {
   created_at: string;
   updated_at: string;
   card_due_date?: string;
+  next_due_date?: string;
   // Relational data (when include=relations)
   tax_details?: any[];
   identity_documents?: any[];

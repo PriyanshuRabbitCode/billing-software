@@ -8,7 +8,7 @@ import { schemas } from "@/lib/tableSchemas";
 import PopupModal from "@/components/ui/PopupModal";
 import { useCustomers } from "@/lib/hooks/useCustomers";
 import { useQueryClient } from "@tanstack/react-query";
-import { getErrorMessage, handleApiError } from "@/lib/errorHandling";
+import { getErrorMessage } from "@/lib/errorHandling";
 import { useToastHelpers } from "@/components/ui/Toast";
 
 const schema = schemas.customers;
@@ -75,11 +75,31 @@ export default function CustomersPage() {
           body: JSON.stringify(cleanValues) 
         });
         
-        if (!res.ok) { 
-          await handleApiError(res);
+        if (!res.ok) {
+          let errorMessage = 'Failed to update customer';
+          try {
+            const raw = await res.text();
+            if (raw) {
+              try {
+                const data = JSON.parse(raw);
+                errorMessage = (data && (data.error || data.message)) || errorMessage;
+              } catch {
+                if (raw.includes('<html') || raw.includes('<!DOCTYPE')) {
+                  errorMessage = 'Server error occurred. Please check server logs.';
+                } else {
+                  errorMessage = raw.substring(0, 200) + '...';
+                }
+              }
+            } else {
+              errorMessage = res.statusText || `HTTP ${res.status}`;
+            }
+          } catch {
+            errorMessage = res.statusText || `HTTP ${res.status}`;
+          }
+          throw new Error(errorMessage);
         }
         
-        const updatedData = await res.json();
+        const updatedData = await res.json().catch(() => ({}));
         
         // Invalidate and refetch customers list
         await queryClient.invalidateQueries({ queryKey: ['customers'] });
@@ -97,11 +117,31 @@ export default function CustomersPage() {
           body: JSON.stringify(cleanValues) 
         });
         
-        if (!res.ok) { 
-          await handleApiError(res);
+        if (!res.ok) {
+          let errorMessage = 'Failed to create customer';
+          try {
+            const raw = await res.text();
+            if (raw) {
+              try {
+                const data = JSON.parse(raw);
+                errorMessage = (data && (data.error || data.message)) || errorMessage;
+              } catch {
+                if (raw.includes('<html') || raw.includes('<!DOCTYPE')) {
+                  errorMessage = 'Server error occurred. Please check server logs.';
+                } else {
+                  errorMessage = raw.substring(0, 200) + '...';
+                }
+              }
+            } else {
+              errorMessage = res.statusText || `HTTP ${res.status}`;
+            }
+          } catch {
+            errorMessage = res.statusText || `HTTP ${res.status}`;
+          }
+          throw new Error(errorMessage);
         }
         
-        const newData = await res.json();
+        const newData = await res.json().catch(() => ({}));
         
         // Invalidate and refetch customers list
         await queryClient.invalidateQueries({ queryKey: ['customers'] });
