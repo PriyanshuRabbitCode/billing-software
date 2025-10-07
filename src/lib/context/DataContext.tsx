@@ -16,7 +16,7 @@ interface Customer {
   pin_code?: string;
   created_at: string;
   updated_at: string;
-  card_due_date?: string;
+  // card_due_date removed; use next_due_date or due_day
   // Relations
   tax_details?: any[];
   identity_documents?: any[];
@@ -59,7 +59,10 @@ interface CardDetail {
   card_type: string;
   card_name: string;
   card_number: string;
-  due_date?: string;
+  // due_date removed; next_due_date derived at read time from due_day
+  // Add optional computed fields returned by APIs
+  due_day?: number;
+  next_due_date?: string;
   created_at: string;
   updated_at: string;
 }

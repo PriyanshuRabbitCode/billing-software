@@ -83,7 +83,8 @@ export async function POST(request: NextRequest) {
       mdr_amount: 0,
       mdr_charge_amount: 0,
       profit_amount: 0,
-      pending_amount: -amount, // Negative to reduce the total pending amount
+-      pending_amount: -amount, // Negative to reduce the total pending amount
++      pending_amount: 0, // Payments never store negative pending; reduce pending via updates to existing transactions
       status: 'PAID'
     };
 
@@ -115,8 +116,33 @@ export async function POST(request: NextRequest) {
       paymentTransaction.status
     ]);
 
-    // Calculate new pending amount
-    const newPendingAmount = currentPending - amount;
+-    // Calculate new pending amount
+-    const newPendingAmount = currentPending - amount;
++    // Reduce pending_amount across existing positive-pending transactions for this card
++    let remaining = amount;
++    const { rows: positivePendingTxs } = await query(
++      `SELECT id, pending_amount FROM transactions WHERE card_number = $1 AND pending_amount > 0 ORDER BY created_at ASC`,
++      [cardNumber]
++    );
++    for (const tx of positivePendingTxs) {
++      if (remaining <= 0) break;
++      const current = Number(tx.pending_amount || 0);
++      const reduce = Math.min(current, remaining);
++      if (reduce > 0) {
++        await query(
++          `UPDATE transactions SET pending_amount = GREATEST(pending_amount - $1, 0) WHERE id = $2`,
++          [reduce, tx.id]
++        );
++        remaining -= reduce;
++      }
++    }
++
++    // Recompute pending amount after updates
++    const { rows: pendingAfterRows } = await query(
++      `SELECT COALESCE(SUM(pending_amount), 0) as total_pending FROM transactions WHERE card_number = $1`,
++      [cardNumber]
++    );
++    const newPendingAmount = Math.max(0, parseFloat(pendingAfterRows[0]?.total_pending || '0'));
     
     // If pending amount becomes 0 or less, automatically move the original pending amount to received amount
     if (newPendingAmount <= 0) {
@@ -149,52 +175,7 @@ export async function POST(request: NextRequest) {
           console.log(`Moved pending amount ${originalPendingAmount} to received amount for transaction ${mainTransaction.id}`);
         }
 
-        // Auto-renew card due_date to next cycle based on due_day
-        const { rows: cardRows } = await query(
-          'SELECT id, due_day, due_date FROM card_details WHERE card_number = $1 LIMIT 1',
-          [cardNumber]
-        );
-
-        if (cardRows.length > 0) {
-          const card = cardRows[0];
-          const dueDayRaw = card.due_day;
-          const currentDueDateRaw = card.due_date;
-
-          const computeNextMonthDueDate = (dueDay: number, baseDate?: Date) => {
-            const reference = baseDate ?? new Date();
-            // Move to next month relative to reference
-            const nextMonthStart = new Date(reference.getFullYear(), reference.getMonth() + 1, 1);
-            const lastDay = new Date(nextMonthStart.getFullYear(), nextMonthStart.getMonth() + 1, 0).getDate();
-            const safeDay = Math.min(dueDay, lastDay);
-            return new Date(nextMonthStart.getFullYear(), nextMonthStart.getMonth(), safeDay);
-          };
-
-          let nextDueDate: Date | null = null;
-
-          if (typeof dueDayRaw === 'number' && !isNaN(dueDayRaw) && dueDayRaw >= 1 && dueDayRaw <= 31) {
-            if (currentDueDateRaw) {
-              const currentDueDate = new Date(currentDueDateRaw);
-              nextDueDate = computeNextMonthDueDate(dueDayRaw, currentDueDate);
-            } else {
-              nextDueDate = computeNextMonthDueDate(dueDayRaw);
-            }
-          } else if (currentDueDateRaw) {
-            // Fallback: advance existing due_date by one month, keeping day within month range
-            const d = new Date(currentDueDateRaw);
-            const nextMonthStart = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-            const lastDay = new Date(nextMonthStart.getFullYear(), nextMonthStart.getMonth() + 1, 0).getDate();
-            const safeDay = Math.min(d.getDate(), lastDay);
-            nextDueDate = new Date(nextMonthStart.getFullYear(), nextMonthStart.getMonth(), safeDay);
-          }
-
-          if (nextDueDate) {
-            await query(
-              'UPDATE card_details SET due_date = $1, updated_at = NOW() WHERE id = $2',
-              [nextDueDate.toISOString().slice(0, 10), card.id]
-            );
-            console.log(`Auto-renewed card due_date to ${nextDueDate.toISOString().slice(0, 10)} for card ${cardNumber}`);
-          }
-        }
+        // Removed auto-renew of stored due_date; next due should be computed from due_day at read time
       } catch (updateError) {
         console.error('Error updating received amount or renewing due date after pending amount paid:', updateError);
         // Don't fail the payment if this update fails

@@ -439,12 +439,12 @@ export default function CustomerViewModal({
                                 {formatCurrency(cardPending.received_amount || 0)}
                               </td>
                               <td className="px-4 py-2 font-semibold">
-                                <span className={Number(cardPending.pending_amount) > 10000 ? 'text-red-400' : 'text-yellow-400'}>
-                                  {formatCurrency(cardPending.pending_amount || 0)}
+                                <span className={Math.max(0, Number(cardPending.pending_amount) || 0) > 10000 ? 'text-red-400' : 'text-yellow-400'}>
+                                  {formatCurrency(Math.max(0, Number(cardPending.pending_amount) || 0))}
                                 </span>
                               </td>
                               <td className="px-4 py-2 text-center">
-                                {cardPending.pending_amount > 0 ? (
+                                {Math.max(0, Number(cardPending.pending_amount) || 0) > 0 ? (
                                   <button
                                     onClick={() => handlePayClick(cardPending)}
                                     className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
@@ -527,9 +527,7 @@ export default function CustomerViewModal({
                             <td className="px-4 py-2">{
                               card.next_due_date
                                 ? formatDate(card.next_due_date)
-                                : (card.due_day 
-                                    ? formatDate(computeNextDueDateFromDueDay(card.due_day)!) 
-                                    : formatDate(card.due_date))
+                                : (card.due_day ? `Day ${card.due_day}` : '—')
                             }</td>
                           </tr>
                         ))}
@@ -606,8 +604,8 @@ export default function CustomerViewModal({
                               {formatCurrency(tx.profit_amount || 0)}
                             </td>
                             <td className="px-4 py-2">
-                              <span className={Number(tx.pending_amount) > 0 ? 'text-yellow-400' : 'text-green-400'}>
-                                {formatCurrency(tx.pending_amount || 0)}
+                              <span className={Math.max(0, Number(tx.pending_amount) || 0) > 0 ? 'text-yellow-400' : 'text-green-400'}>
+                                {formatCurrency(Math.max(0, Number(tx.pending_amount) || 0))}
                               </span>
                             </td>
                             <td className="px-4 py-2">

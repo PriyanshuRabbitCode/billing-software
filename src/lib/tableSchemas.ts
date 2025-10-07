@@ -32,12 +32,12 @@ export const schemas: Record<string, TableSchema> = {
       { key: "email_id", label: "Email", sortable: true },
       { key: "contact_no", label: "Contact" },
       { 
-        key: "card_due_date", 
+        key: "next_due_date", 
         label: "Due Date",
         render: (row: any) => {
-          const dateString = row.next_due_date || row.card_due_date;
-          if (dateString) {
-            const date = new Date(dateString);
+          // Priority: next_due_date → due_day → em dash
+          if (row.next_due_date) {
+            const date = new Date(row.next_due_date);
             const dd = String(date.getDate()).padStart(2, '0');
             const mm = String(date.getMonth() + 1).padStart(2, '0');
             const yyyy = date.getFullYear();
@@ -403,13 +403,6 @@ export const schemas: Record<string, TableSchema> = {
           if (row.due_day) {
             return `Day ${row.due_day}`;
           }
-          if (row.due_date) {
-            const date = new Date(row.due_date);
-            const dd = String(date.getDate()).padStart(2, '0');
-            const mm = String(date.getMonth() + 1).padStart(2, '0');
-            const yyyy = date.getFullYear();
-            return `${dd}-${mm}-${yyyy}`;
-          }
           return "—";
         }
       },
@@ -513,7 +506,8 @@ export const schemas: Record<string, TableSchema> = {
         label: "Pending Amount (₹)", 
         sortable: true,
         render: (row: any) => {
-          const amount = Number(row.pending_amount) || 0;
+          const raw = Number(row.pending_amount);
+          const amount = isNaN(raw) ? 0 : Math.max(0, raw);
           return new Intl.NumberFormat('en-IN', {
             style: 'currency',
             currency: 'INR',
@@ -572,13 +566,19 @@ export const schemas: Record<string, TableSchema> = {
         label: "Due", 
         sortable: true,
         render: (row: any) => {
-          if (!row.due_date) return "—";
-          const date = new Date(row.due_date);
-          return date.toLocaleDateString('en-GB', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric'
-          });
+          // For payment alerts, if due_date is not set, fall back to customer's next_due_date or due_day display
+          if (row.due_date) {
+            const date = new Date(row.due_date);
+            return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          }
+          if (row.next_due_date) {
+            const date = new Date(row.next_due_date);
+            return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          }
+          if (row.due_day) {
+            return `Day ${row.due_day}`;
+          }
+          return "—";
         }
       },
       { key: "customer_id", label: "Customer" },

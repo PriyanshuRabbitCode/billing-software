@@ -114,7 +114,7 @@ export async function PATCH(
 
     // Build update query - only update fields that have actually changed
     const allowedFields = [
-      'bank_name', 'card_type', 'card_name', 'card_number', 'due_date',
+      'bank_name', 'card_type', 'card_name', 'card_number',
       'enable_defaults', 'default_pos_type', 'custom_pos_type', 'default_tax_rate', 'default_mdr_rate', 'due_day'
     ];
     const updates: string[] = [];
@@ -188,10 +188,6 @@ export async function PATCH(
           processedValue = null;
         }
 
-        if (key === 'due_date') {
-          dueDateExplicitlyUpdated = true;
-        }
-        
         // Only update if the value has actually changed
         if (processedValue !== existingCards[0][key]) {
           updates.push(`${key} = $${paramIndex}`);
@@ -201,44 +197,7 @@ export async function PATCH(
       }
     }
 
-    // If due_day is updated and due_date is NOT explicitly provided, compute upcoming due_date and include update
-    if (dueDayNew !== undefined && !dueDateExplicitlyUpdated) {
-      // Helper: compute upcoming due date from dueDay
-      const computeUpcomingDueDate = (dueDay: number | null): string | null => {
-        if (dueDay === null) return null;
-        const today = new Date();
-        const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-        const year = today.getFullYear();
-        const month = today.getMonth();
-        const lastDayCurrentMonth = new Date(year, month + 1, 0).getDate();
-        const dayCurrent = Math.min(dueDay, lastDayCurrentMonth);
-        const candidate = new Date(year, month, dayCurrent);
-        candidate.setHours(0, 0, 0, 0);
-        if (candidate >= startOfToday) {
-          const yyyy = candidate.getFullYear();
-          const mm = String(candidate.getMonth() + 1).padStart(2, '0');
-          const dd = String(candidate.getDate()).padStart(2, '0');
-          return `${yyyy}-${mm}-${dd}`;
-        }
-        const nextYear = month === 11 ? year + 1 : year;
-        const nextMonthIndex = (month + 1) % 12;
-        const lastDayNextMonth = new Date(nextYear, nextMonthIndex + 1, 0).getDate();
-        const dayNext = Math.min(dueDay, lastDayNextMonth);
-        const nextCandidate = new Date(nextYear, nextMonthIndex, dayNext);
-        nextCandidate.setHours(0, 0, 0, 0);
-        const yyyy2 = nextCandidate.getFullYear();
-        const mm2 = String(nextCandidate.getMonth() + 1).padStart(2, '0');
-        const dd2 = String(nextCandidate.getDate()).padStart(2, '0');
-        return `${yyyy2}-${mm2}-${dd2}`;
-      };
-
-      const computedDueDate = computeUpcomingDueDate(dueDayNew ?? null);
-      if (computedDueDate !== existingCards[0]['due_date']) {
-        updates.push(`due_date = $${paramIndex}`);
-        values.push(computedDueDate);
-        paramIndex++;
-      }
-    }
+    // Next due date is computed from due_day at read time; no stored due_date updates here.
 
     if (updates.length === 0) {
       return NextResponse.json(

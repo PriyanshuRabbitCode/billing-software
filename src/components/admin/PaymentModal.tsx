@@ -31,7 +31,7 @@ export default function PaymentModal({
   // Auto-fill pending amount when modal opens
   useEffect(() => {
     if (open && cardData) {
-      setPaidAmount(cardData.pending_amount.toString());
+      setPaidAmount((Math.max(0, Number(cardData.pending_amount) || 0)).toString());
     }
   }, [open, cardData]);
 
@@ -66,8 +66,8 @@ export default function PaymentModal({
 
     const amount = parseFloat(paidAmount);
     
-    if (amount > cardData.pending_amount) {
-      setError(`Amount cannot be greater than pending amount (${formatCurrency(cardData.pending_amount)})`);
+    if (amount > Math.max(0, Number(cardData.pending_amount) || 0)) {
+      setError(`Amount cannot be greater than pending amount (${formatCurrency(Math.max(0, Number(cardData.pending_amount) || 0))})`);
       return;
     }
 
@@ -161,7 +161,7 @@ export default function PaymentModal({
               <div>
                 <span className="text-gray-400">Pending Amount:</span>
                 <span className="ml-2 text-yellow-400 font-medium">
-                  {formatCurrency(cardData.pending_amount)}
+                  {formatCurrency(Math.max(0, Number(cardData.pending_amount) || 0))}
                 </span>
               </div>
             </div>
@@ -201,12 +201,12 @@ export default function PaymentModal({
               placeholder="0.00"
               step="0.01"
               min="0.01"
-              max={cardData.pending_amount}
+              max={Math.max(0, Number(cardData.pending_amount) || 0)}
               disabled={loading}
               required
             />
             <div className="text-xs text-gray-500 mt-1">
-              Maximum: {formatCurrency(cardData.pending_amount)}
+              Maximum: {formatCurrency(Math.max(0, Number(cardData.pending_amount) || 0))}
             </div>
           </div>
 

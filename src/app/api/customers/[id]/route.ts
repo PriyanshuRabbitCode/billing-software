@@ -23,32 +23,7 @@ export async function GET(
     // Get customer details
     const { rows: customers } = await query(
       `SELECT c.*, 
-              (SELECT MIN(
-                CASE 
-                  WHEN cd.due_day IS NOT NULL THEN (
-                    CASE 
-                      WHEN make_date(
-                        EXTRACT(YEAR FROM CURRENT_DATE)::int,
-                        EXTRACT(MONTH FROM CURRENT_DATE)::int,
-                        LEAST(cd.due_day, EXTRACT(DAY FROM (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day'))::int)
-                      ) >= CURRENT_DATE
-                      THEN make_date(
-                        EXTRACT(YEAR FROM CURRENT_DATE)::int,
-                        EXTRACT(MONTH FROM CURRENT_DATE)::int,
-                        LEAST(cd.due_day, EXTRACT(DAY FROM (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day'))::int)
-                      )
-                      ELSE make_date(
-                        EXTRACT(YEAR FROM (CURRENT_DATE + INTERVAL '1 month'))::int,
-                        EXTRACT(MONTH FROM (CURRENT_DATE + INTERVAL '1 month'))::int,
-                        LEAST(cd.due_day, EXTRACT(DAY FROM (date_trunc('month', CURRENT_DATE + INTERVAL '1 month') + INTERVAL '1 month' - INTERVAL '1 day'))::int)
-                      )
-                    END
-                  )
-                  ELSE cd.due_date
-                END
-              ) 
-               FROM card_details cd 
-               WHERE cd.customer_id = c.id) as card_due_date,
+              (SELECT MIN(cd.due_day) FROM card_details cd WHERE cd.customer_id = c.id) as due_day,
               (SELECT MIN(
                 CASE 
                   WHEN cd2.due_day IS NOT NULL THEN (
@@ -70,13 +45,13 @@ export async function GET(
                       )
                     END
                   )
-                  ELSE cd2.due_date
+                  ELSE NULL
                 END
               ) 
                FROM card_details cd2 
                WHERE cd2.customer_id = c.id) as next_due_date
-       FROM customers c 
-       WHERE c.id = $1`,
+               FROM customers c 
+               WHERE c.id = $1`,
       [customerId]
     );
 
@@ -115,7 +90,7 @@ export async function GET(
                 )
               END
             )
-            ELSE cd.due_date
+            ELSE NULL
           END AS next_due_date
         FROM card_details cd
         WHERE cd.customer_id = $1

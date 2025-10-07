@@ -104,9 +104,23 @@ export async function PATCH(
     const values: unknown[] = [];
     let paramIndex = 1;
 
+    // Clamp pending_amount in the body if provided
+    if (Object.prototype.hasOwnProperty.call(body, 'pending_amount')) {
+      const p = body.pending_amount;
+      if (p !== null && p !== undefined) {
+        const n = Number(p);
+        body.pending_amount = isNaN(n) ? null : Math.max(0, n);
+      }
+    }
+
     for (const [key, value] of Object.entries(body)) {
       if (allowedFields.includes(key) && value !== undefined) {
-        updates.push(`${key} = $${paramIndex}`);
+        if (key === 'pending_amount') {
+          // Use GREATEST to clamp at DB level
+          updates.push(`${key} = GREATEST($${paramIndex}, 0)`);
+        } else {
+          updates.push(`${key} = $${paramIndex}`);
+        }
         values.push(value);
         paramIndex++;
       }

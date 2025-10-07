@@ -10,8 +10,10 @@ interface Customer {
   aadhaar_no: string;
   created_at: string;
   updated_at: string;
-  card_due_date?: string;
+  // card_due_date removed; use next_due_date or due_day
   next_due_date?: string;
+  // Add aggregated due day (minimum due_day from customer cards)
+  due_day?: number;
   // Relational data (when include=relations)
   tax_details?: any[];
   identity_documents?: any[];

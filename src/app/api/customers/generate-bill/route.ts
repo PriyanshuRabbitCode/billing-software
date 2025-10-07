@@ -340,7 +340,14 @@ export async function POST(request: NextRequest) {
               ${cardPendingAmounts.map((cardPending: any) => {
                 // Find the matching card from cards array to get the due date
                 const matchingCard = cards?.find((c: any) => c.card_number === cardPending.card_number);
-                const dueDate = matchingCard?.due_date ? new Date(matchingCard.due_date).toLocaleDateString() : '—';
+                // Prefer next_due_date if available, else show due_day as "Day X", else em dash
+                let dueDateDisplay = '—';
+                if (matchingCard?.next_due_date) {
+                  const date = new Date(matchingCard.next_due_date);
+                  dueDateDisplay = date.toLocaleDateString();
+                } else if (matchingCard?.due_day) {
+                  dueDateDisplay = `Day ${matchingCard.due_day}`;
+                }
                 const status = Number(cardPending.pending_amount) > 0 ? 'Pending' : 'PAID';
                 
                 return `
@@ -348,7 +355,7 @@ export async function POST(request: NextRequest) {
                   <td>${cardPending.card_number ? `**** **** **** ${cardPending.card_number.slice(-4)}` : '—'}</td>
                   <td>${cardPending.card_name || '—'}</td>
                   <td class="amount">${formatCurrency(cardPending.pending_amount || 0)}</td>
-                  <td>${dueDate}</td>
+                  <td>${dueDateDisplay}</td>
                   <td>${status}</td>
                 </tr>`;
               }).join('')}

@@ -15,7 +15,8 @@ interface CustomerWithRelations {
   contact_no: string;
   created_at: string;
   updated_at: string;
-  card_due_date?: string;
+  next_due_date?: string;
+  due_day?: number;
   // Relational data (when include=cards)
   cards?: any[];
   // Relational data (when include=transactions)
@@ -51,32 +52,6 @@ export async function GET(request: NextRequest) {
       SELECT c.*, 
              (SELECT MIN(
                 CASE 
-                  WHEN cd.due_day IS NOT NULL THEN (
-                    CASE 
-                      WHEN make_date(
-                        EXTRACT(YEAR FROM CURRENT_DATE)::int,
-                        EXTRACT(MONTH FROM CURRENT_DATE)::int,
-                        LEAST(cd.due_day, EXTRACT(DAY FROM (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day'))::int)
-                      ) >= CURRENT_DATE
-                      THEN make_date(
-                        EXTRACT(YEAR FROM CURRENT_DATE)::int,
-                        EXTRACT(MONTH FROM CURRENT_DATE)::int,
-                        LEAST(cd.due_day, EXTRACT(DAY FROM (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day'))::int)
-                      )
-                      ELSE make_date(
-                        EXTRACT(YEAR FROM (CURRENT_DATE + INTERVAL '1 month'))::int,
-                        EXTRACT(MONTH FROM (CURRENT_DATE + INTERVAL '1 month'))::int,
-                        LEAST(cd.due_day, EXTRACT(DAY FROM (date_trunc('month', CURRENT_DATE + INTERVAL '1 month') + INTERVAL '1 month' - INTERVAL '1 day'))::int)
-                      )
-                    END
-                  )
-                  ELSE cd.due_date
-                END
-              ) 
-              FROM card_details cd 
-              WHERE cd.customer_id = c.id) as card_due_date,
-             (SELECT MIN(
-                CASE 
                   WHEN cd2.due_day IS NOT NULL THEN (
                     CASE 
                       WHEN make_date(
@@ -96,11 +71,12 @@ export async function GET(request: NextRequest) {
                       )
                     END
                   )
-                  ELSE cd2.due_date
+                  ELSE NULL
                 END
               ) 
               FROM card_details cd2 
-              WHERE cd2.customer_id = c.id) as next_due_date
+              WHERE cd2.customer_id = c.id) as next_due_date,
+             (SELECT MIN(cd3.due_day) FROM card_details cd3 WHERE cd3.customer_id = c.id) as due_day
       FROM customers c
     `;
     const queryParams: unknown[] = [];
@@ -162,7 +138,7 @@ export async function GET(request: NextRequest) {
                 )
               END
             )
-            ELSE cd.due_date
+            ELSE NULL
           END AS next_due_date
         FROM card_details cd
         WHERE cd.customer_id = ANY($1)

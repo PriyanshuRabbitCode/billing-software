@@ -10,7 +10,6 @@ interface CardWithRelations {
   card_type: string;
   card_name: string;
   card_number: string;
-  due_date: string;
   due_day?: number;
   next_due_date?: string;
   enable_defaults?: boolean;
@@ -68,7 +67,7 @@ export async function GET(request: NextRequest) {
             )
           END
         )
-        ELSE cd.due_date
+        ELSE NULL
       END AS next_due_date
     FROM card_details cd
     `;
@@ -141,7 +140,7 @@ export async function GET(request: NextRequest) {
             card_number,
             COALESCE(SUM(deposit_amount), 0) as total_deposits,
             COALESCE(SUM(withdraw_amount), 0) as total_withdrawals,
-            COALESCE(SUM(pending_amount), 0) as pending_amount
+            GREATEST(COALESCE(SUM(pending_amount), 0), 0) as pending_amount
           FROM transactions 
           WHERE card_number = ANY($1::text[])
           GROUP BY card_number
@@ -154,7 +153,7 @@ export async function GET(request: NextRequest) {
           if (pending) {
             card.total_deposits = parseFloat(pending.total_deposits);
             card.total_withdrawals = parseFloat(pending.total_withdrawals);
-            card.pending_amount = parseFloat(pending.pending_amount);
+            card.pending_amount = Math.max(0, parseFloat(pending.pending_amount));
           } else {
             card.total_deposits = 0;
             card.total_withdrawals = 0;
@@ -192,7 +191,6 @@ export async function POST(request: NextRequest) {
       card_type, 
       card_name, 
       card_number, 
-      due_date,
       due_day,
       enable_defaults,
       default_pos_type,
@@ -291,25 +289,19 @@ export async function POST(request: NextRequest) {
       return `${yyyy2}-${mm2}-${dd2}`;
     };
 
-    // Compute initial due_date when missing and due_day provided
-    let dueDateToInsert: string | null = due_date || null;
-    if (!dueDateToInsert && normalizedDueDay !== null) {
-      dueDateToInsert = computeUpcomingDueDate(normalizedDueDay);
-    }
-
     // Insert new card - clean card number by removing spaces before storing
     const cleanCardNumber = card_number ? card_number.replace(/\s/g, '') : null;
     
     const insertQuery = `
       INSERT INTO card_details (
-        customer_id, bank_name, card_type, card_name, card_number, due_date, due_day,
+        customer_id, bank_name, card_type, card_name, card_number, due_day,
         enable_defaults, default_pos_type, custom_pos_type, default_tax_rate, default_mdr_rate
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *
     `;
     const { rows } = await query(insertQuery, [
-      customer_id, bank_name, card_type, card_name, cleanCardNumber, dueDateToInsert, normalizedDueDay,
+      customer_id, bank_name, card_type, card_name, cleanCardNumber, normalizedDueDay,
       enable_defaults || false, posTypeToInsert || null, custom_pos_type || null, default_tax_rate || null, default_mdr_rate || null
     ]);
 

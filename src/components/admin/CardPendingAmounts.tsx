@@ -54,7 +54,7 @@ export default function CardPendingAmounts({ selectedCustomerId }: CardPendingAm
         card_name: card.card_name,
         customer_id: card.customer?.id || 0,
         customer_name: card.customer?.full_name || 'Unknown',
-        pending_amount: card.pending_amount || 0,
+        pending_amount: Math.max(0, Number(card.pending_amount) || 0),
         received_amount: card.total_deposits || 0
       }));
 
@@ -176,12 +176,12 @@ export default function CardPendingAmounts({ selectedCustomerId }: CardPendingAm
                     {formatCurrency(card.received_amount)}
                   </td>
                   <td className="py-3 px-2 text-right">
-                    <span className={card.pending_amount > 0 ? 'text-yellow-400' : 'text-green-400'}>
-                      {formatCurrency(card.pending_amount)}
+                    <span className={(Math.max(0, Number(card.pending_amount) || 0)) > 0 ? 'text-yellow-400' : 'text-green-400'}>
+                      {formatCurrency(Math.max(0, Number(card.pending_amount) || 0))}
                     </span>
                   </td>
                   <td className="py-3 px-2 text-center">
-                    {card.pending_amount > 0 ? (
+                    {(Math.max(0, Number(card.pending_amount) || 0)) > 0 ? (
                       <button
                         onClick={() => handlePayClick(card)}
                         className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
@@ -213,7 +213,7 @@ export default function CardPendingAmounts({ selectedCustomerId }: CardPendingAm
           <div className="flex justify-between text-sm">
             <span className="text-gray-400">Total Pending:</span>
             <span className="text-yellow-400">
-              {formatCurrency(cardPendingData.reduce((sum, card) => sum + card.pending_amount, 0))}
+              {formatCurrency(cardPendingData.reduce((sum, card) => sum + Math.max(0, Number(card.pending_amount) || 0), 0))}
             </span>
           </div>
         </div>

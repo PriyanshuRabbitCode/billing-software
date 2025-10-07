@@ -598,7 +598,7 @@ async function getBusinessHealth(query: any, fromDate: string, toDate: string) {
               )
             END
           )
-          ELSE due_date
+          ELSE NULL
         END
       ) >= $1 AND (
         CASE 
@@ -621,7 +621,7 @@ async function getBusinessHealth(query: any, fromDate: string, toDate: string) {
               )
             END
           )
-          ELSE due_date
+          ELSE NULL
         END
       ) <= $2`,
       [fromDate, toDate]

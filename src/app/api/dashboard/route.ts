@@ -152,7 +152,7 @@ export async function GET(request: NextRequest) {
               )
             END
           )
-          ELSE cd.due_date
+          ELSE NULL
         END AS next_due_date,
         c.full_name as customer_name,
         c.email_id,
@@ -180,7 +180,7 @@ export async function GET(request: NextRequest) {
               )
             END
           )
-          ELSE cd.due_date
+          ELSE NULL
         END
       ) IS NOT NULL
         AND (
@@ -204,7 +204,7 @@ export async function GET(request: NextRequest) {
                 )
               END
             )
-            ELSE cd.due_date
+            ELSE NULL
           END
         ) >= CURRENT_DATE
         AND (
@@ -228,7 +228,7 @@ export async function GET(request: NextRequest) {
                 )
               END
             )
-            ELSE cd.due_date
+            ELSE NULL
           END
         ) <= CURRENT_DATE + INTERVAL '30 days'
       ORDER BY next_due_date ASC

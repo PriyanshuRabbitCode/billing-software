@@ -372,7 +372,7 @@ export async function POST(request: NextRequest) {
         pending = (deposit - withdraw) + taxAmountCalc;
       }
       
-      // Determine status
+      // Determine status from raw pending (before clamping)
       if (pending > 0) {
         finalStatus = "Pending";
       } else if (pending < 0) {
@@ -381,7 +381,9 @@ export async function POST(request: NextRequest) {
         finalStatus = "PAID";
       }
       
-      finalPendingAmount = pending;
+      // Business rule: pending_amount must never be negative
+      const clampedPending = Math.max(0, pending);
+      finalPendingAmount = clampedPending;
     }
 
     // Ensure numeric values before insert
