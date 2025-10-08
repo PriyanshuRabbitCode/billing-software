@@ -37,6 +37,8 @@ interface UseCustomersOptions {
   offset?: number;
   search?: string;
   forceRefresh?: boolean;
+  enabled?: boolean; // New: control query execution
+  includes?: Array<'cards' | 'transactions' | 'accounts' | 'tax_details' | 'identity_documents' | 'card_pending_amounts'>; // Explicit relation includes
 }
 
 interface UseCustomersResult {
@@ -58,12 +60,19 @@ export function useCustomers(options: UseCustomersOptions = {}): UseCustomersRes
     limit = 1000, 
     offset = 0, 
     search, 
-    forceRefresh = false 
+    forceRefresh = false,
+    enabled = true // default enabled
   } = options;
 
   const buildUrl = useMemo(() => {
     const params = new URLSearchParams();
-    if (include === 'relations') params.append('include', 'relations');
+    // Map include flag to explicit includes if needed
+    if (include === 'relations') {
+      params.append('include', 'cards,transactions,accounts,tax_details,identity_documents,card_pending_amounts');
+    }
+    if (options.includes && options.includes.length > 0) {
+      params.set('include', options.includes.join(','));
+    }
     if (customerId) params.append('id', customerId.toString());
     if (customerIds && customerIds.length > 0) params.append('ids', customerIds.join(','));
     if (limit !== 1000) params.append('limit', limit.toString());
@@ -72,11 +81,11 @@ export function useCustomers(options: UseCustomersOptions = {}): UseCustomersRes
     if (forceRefresh) params.append('refresh', 'true');
     const qs = params.toString();
     return qs ? `/api/customers?${qs}` : `/api/customers`;
-  }, [include, customerId, customerIds, limit, offset, search, forceRefresh]);
+  }, [include, customerId, customerIds, limit, offset, search, forceRefresh, options.includes]);
 
   const queryKey = useMemo(() => [
-    'customers', include, customerId || null, (customerIds || []).join(',') || null, limit, offset, search || null
-  ], [include, customerId, customerIds, limit, offset, search]);
+    'customers', include, customerId || null, (customerIds || []).join(',') || null, limit, offset, search || null, (options.includes || []).join(',') || null
+  ], [include, customerId, customerIds, limit, offset, search, options.includes]);
 
   const query = useQuery({
     queryKey,
@@ -92,6 +101,7 @@ export function useCustomers(options: UseCustomersOptions = {}): UseCustomersRes
       return result.data as Customer[];
     },
     staleTime: 5 * 60 * 1000,
+    enabled, // respect enabled flag
   });
 
   return {
@@ -110,10 +120,15 @@ export async function invalidateCustomerCache(): Promise<void> {
 }
 
 // Helper function to get a single customer with relations
-export function useCustomer(customerId: number, includeRelations: boolean = false) {
+export function useCustomer(customerId: number, includeRelations: boolean = false, enabled: boolean = true) {
+  const relationIncludes: Array<'cards' | 'transactions' | 'accounts' | 'tax_details' | 'identity_documents' | 'card_pending_amounts'> = includeRelations
+    ? ['cards', 'transactions', 'accounts', 'tax_details', 'identity_documents', 'card_pending_amounts']
+    : [];
   const { customers, loading, error, refetch } = useCustomers({
     customerId,
-    include: includeRelations ? 'relations' : 'basic'
+    include: includeRelations ? 'relations' : 'basic',
+    enabled,
+    includes: relationIncludes.length ? relationIncludes : undefined,
   });
 
   return {

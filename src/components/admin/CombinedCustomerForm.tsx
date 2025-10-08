@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { schemas } from "@/lib/tableSchemas";
 import { CrudField } from "./CrudFormModal";
 import { useToastHelpers } from "@/components/ui/Toast";
+import { useCustomers } from "@/lib/hooks/useCustomers";
 
 interface CombinedCustomerFormProps {
   open: boolean;
@@ -20,6 +21,7 @@ export default function CombinedCustomerForm({
   onSubmit,
   title,
 }: CombinedCustomerFormProps) {
+  const { customers: customerRows } = useCustomers({ include: 'basic' });
   // Form values for each section
   const [customerValues, setCustomerValues] = useState<Record<string, any>>({});
   const [taxValues, setTaxValues] = useState<Record<string, any>>({});
@@ -272,21 +274,33 @@ export default function CombinedCustomerForm({
   useEffect(() => {
     let active = true;
     async function loadRelations() {
+      // Only load relations when modal is open to avoid unnecessary calls
+      if (!open) return;
+
       const allFields = [...customerSchema.fields, ...taxSchema.fields, ...docSchema.fields];
       const relationFields = allFields.filter((f) => f.relation);
       
       if (relationFields.length === 0) return;
       
       const loaded: Record<string, Array<{ value: any; label: string }>> = {};
+
+      // Precompute customer options once using React Query cache
+      const customerOpts = (customerRows || []).map((r: any) => ({ 
+        value: r.id, 
+        label: r.full_name 
+      }));
+      
       for (const f of relationFields) {
         try {
-          const res = await fetch(`/api/customers`);
-          const result = await res.json();
-          const list = result.data || result;
-          loaded[f.name] = list.map((r: any) => ({ 
-            value: r.id, 
-            label: r.full_name 
-          }));
+          if (f.relation?.table === 'customers') {
+            loaded[f.name] = customerOpts;
+          } else {
+            // Fallback generic fetch for other relations if any
+            const res = await fetch(`/api/${f.relation?.table}`);
+            const result = await res.json();
+            const list = result.data || result;
+            loaded[f.name] = list.map((r: any) => ({ value: r[f.relation!.valueField], label: r[f.relation!.labelField] }));
+          }
         } catch (e) {
           loaded[f.name] = [];
         }
@@ -299,7 +313,7 @@ export default function CombinedCustomerForm({
     return () => {
       active = false;
     };
-  }, []);
+  }, [open, customerRows, customerSchema.fields, taxSchema.fields, docSchema.fields]);
 
   // Validate all form sections
   const validate = async (): Promise<boolean> => {

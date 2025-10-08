@@ -54,7 +54,7 @@ export async function GET(
           COALESCE(SUM(withdraw_amount), 0) as total_withdrawals,
           COALESCE(SUM(pending_amount), 0) as pending_amount
         FROM transactions 
-        WHERE card_number = $1`,
+        WHERE REPLACE(card_number, ' ', '') = REPLACE($1, ' ', '')`,
         [card.card_number]
       );
       
@@ -153,7 +153,7 @@ export async function PATCH(
             const n = parseInt(processedValue, 10);
             if (isNaN(n) || n <= 0 || n > 31) {
               return NextResponse.json(
-                { success: false, error: 'due_day must be an integer between 1 and 31, or empty to clear' },
+                { success: false, error: 'Invalid due day. Must be between 1 and 31.' },
                 { status: 400 }
               );
             }
@@ -269,7 +269,7 @@ export async function DELETE(
     // Check if there are transactions using this card number
     if (card.card_number) {
       const { rows: relatedTransactions } = await query(
-        'SELECT COUNT(*) as count FROM transactions WHERE card_number = $1',
+        "SELECT COUNT(*) as count FROM transactions WHERE REPLACE(card_number, ' ', '') = REPLACE($1, ' ', '')",
         [card.card_number]
       );
       

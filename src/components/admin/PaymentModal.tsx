@@ -20,7 +20,7 @@ export default function PaymentModal({
   open, 
   onClose, 
   cardData, 
-  onPaymentSuccess 
+  onPaymentSuccess
 }: PaymentModalProps) {
   const [paymentMode, setPaymentMode] = useState<string>("");
   const [paidAmount, setPaidAmount] = useState<string>("");

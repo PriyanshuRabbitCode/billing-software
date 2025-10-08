@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useData } from "@/lib/context/DataContext";
+import { useCustomers } from "@/lib/hooks/useCustomers";
 
 interface Customer {
   id: number;
@@ -33,18 +33,8 @@ export default function SearchableCustomerInput({
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
-  // Use global customers from DataContext to avoid duplicate /api/customers calls
-  const { state, fetchCustomers } = useData();
-  const customers = (state.customers as unknown as Customer[]) || [];
-
-  // Ensure customers are loaded once if needed
-  const didRequestRef = useRef(false);
-  useEffect(() => {
-    if (customers.length === 0 && !didRequestRef.current) {
-      didRequestRef.current = true;
-      fetchCustomers();
-    }
-  }, [customers.length, fetchCustomers]);
+  // Use React Query cached customers to avoid duplicate /api/customers calls
+  const { customers } = useCustomers({ include: 'basic' });
 
   // Initialize search term from provided initial values
   useEffect(() => {

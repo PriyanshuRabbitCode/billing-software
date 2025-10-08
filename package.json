@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "migrations:up": "bash scripts/run-migrations.sh",
+    "migrations:down": "echo 'Run down migrations manually by executing the .down.sql files in reverse order'"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.1",

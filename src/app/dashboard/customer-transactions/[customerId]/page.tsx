@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Filter } from "lucide-react";
+import { useCustomer } from "@/lib/hooks/useCustomers";
 
 interface Transaction {
   id: number;
@@ -74,12 +75,7 @@ export default function CustomerTransactionsPage() {
     try {
       console.log('Loading data for customer ID:', customerId);
       
-      // Load customer data
-      const customerRes = await fetch(`/api/customers?id=${customerId}`);
-      const result = await customerRes.json();
-      const customerData = result.data[0];
-      console.log('Customer data loaded:', customerData);
-      setCustomer(customerData);
+      // Customer data is loaded via useCustomer hook
 
       // Load transactions
       const transactionsRes = await fetch(`/api/transactions?customer_id=${customerId}`);

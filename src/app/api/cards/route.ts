@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (cardNumber) {
-      whereConditions.push(`cd.card_number = $${paramIndex}`);
+      whereConditions.push(`REPLACE(cd.card_number, ' ', '') = REPLACE($${paramIndex}, ' ', '')`);
       queryParams.push(cardNumber);
       paramIndex++;
     }
@@ -133,23 +133,24 @@ export async function GET(request: NextRequest) {
 
     // Include pending amounts if requested
     if (include.includes('pending') && cards.length > 0) {
-      const cardNumbers = cards.map(card => card.card_number).filter(Boolean);
-      if (cardNumbers.length > 0) {
+      const cardNumbersClean = cards.map(card => (card.card_number || '').replace(/\s/g, '')).filter(n => n);
+      if (cardNumbersClean.length > 0) {
         const pendingQuery = `
           SELECT 
-            card_number,
+            REPLACE(card_number, ' ', '') AS card_number_clean,
             COALESCE(SUM(deposit_amount), 0) as total_deposits,
             COALESCE(SUM(withdraw_amount), 0) as total_withdrawals,
             GREATEST(COALESCE(SUM(pending_amount), 0), 0) as pending_amount
           FROM transactions 
-          WHERE card_number = ANY($1::text[])
-          GROUP BY card_number
+          WHERE REPLACE(card_number, ' ', '') = ANY($1::text[])
+          GROUP BY REPLACE(card_number, ' ', '')
         `;
-        const { rows: pendingData } = await query(pendingQuery, [cardNumbers]);
+        const { rows: pendingData } = await query(pendingQuery, [cardNumbersClean]);
         
-        const pendingMap = new Map(pendingData.map(p => [p.card_number, p]));
+        const pendingMap = new Map(pendingData.map(p => [p.card_number_clean, p]));
         cards.forEach(card => {
-          const pending = pendingMap.get(card.card_number);
+          const cleanNumber = (card.card_number || '').replace(/\s/g, '');
+          const pending = pendingMap.get(cleanNumber);
           if (pending) {
             card.total_deposits = parseFloat(pending.total_deposits);
             card.total_withdrawals = parseFloat(pending.total_withdrawals);
@@ -254,7 +255,7 @@ export async function POST(request: NextRequest) {
       const n = typeof due_day === 'string' ? parseInt(due_day, 10) : Number(due_day);
       if (Number.isNaN(n) || n <= 0 || n > 31) {
         return NextResponse.json(
-          { success: false, error: 'due_day must be an integer between 1 and 31' },
+          { success: false, error: 'Invalid due day. Must be between 1 and 31.' },
           { status: 400 }
         );
       }

@@ -339,7 +339,7 @@ export async function POST(request: NextRequest) {
             <tbody>
               ${cardPendingAmounts.map((cardPending: any) => {
                 // Find the matching card from cards array to get the due date
-                const matchingCard = cards?.find((c: any) => c.card_number === cardPending.card_number);
+                const matchingCard = cards?.find((c: any) => String(c.card_number || '').replace(/\s/g, '') === String(cardPending.card_number || '').replace(/\s/g, ''));
                 // Prefer next_due_date if available, else show due_day as "Day X", else em dash
                 let dueDateDisplay = '—';
                 if (matchingCard?.next_due_date) {

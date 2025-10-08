@@ -2,15 +2,14 @@
 
 import { useEffect, useState } from "react";
 import SearchableCustomerInput from "./SearchableCustomerInput";
+import { useCustomers } from "@/lib/hooks/useCustomers";
 
 // Debug helpers to gate logs in production
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === 'true';
 const debugLog = (...args: any[]) => { if (DEBUG) console.log(...args); };
 const debugError = (...args: any[]) => { if (DEBUG) console.error(...args); };
 
-// Simple cache for customer options to avoid repeated /api/customers calls across modals
-let customerOptionsCache: Array<{ value: any; label: string }> | null = null;
-let customerOptionsPromise: Promise<Array<{ value: any; label: string }>> | null = null;
+// Rely on React Query cache via useCustomers; no local cache here.
 
 export type FieldType =
   | "text"
@@ -62,6 +61,8 @@ export default function CrudFormModal<T>({
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [options, setOptions] = useState<Record<string, Array<{ value: any; label: string }>>>({});
+  // Use shared customers from React Query cache
+  const { customers } = useCustomers({ include: 'basic' });
 
   useEffect(() => {
     const v: Record<string, any> = {};
@@ -87,34 +88,13 @@ export default function CrudFormModal<T>({
       if (relationFields.length === 0) return;
       const loaded: Record<string, Array<{ value: any; label: string }>> = {};
 
-      // If any relation depends on customers, use a shared cached fetch
-      const needsCustomers = relationFields.some((f) => f.relation?.table === 'customers');
-      if (needsCustomers) {
-        try {
-          if (customerOptionsCache) {
-            // Use cached
-          } else if (customerOptionsPromise) {
-            customerOptionsCache = await customerOptionsPromise;
-          } else {
-            customerOptionsPromise = (async () => {
-              const res = await fetch(`/api/customers`);
-              const result = await res.json();
-              const list = result.data || result;
-              return list.map((r: any) => ({ value: r.id, label: r.full_name }));
-            })();
-            customerOptionsCache = await customerOptionsPromise;
-            customerOptionsPromise = null;
-          }
-        } catch (e) {
-          customerOptionsCache = [];
-          customerOptionsPromise = null;
-        }
-      }
+      // Precompute customer options from React Query cache
+      const customerOpts = (customers || []).map((r: any) => ({ value: r.id, label: r.full_name }));
 
       for (const f of relationFields) {
         try {
           if (f.relation?.table === 'customers') {
-            loaded[f.name] = customerOptionsCache || [];
+            loaded[f.name] = customerOpts;
           } else {
             // Fallback generic fetch for other relations if any
             const res = await fetch(`/api/${f.relation?.table}`);
@@ -132,7 +112,7 @@ export default function CrudFormModal<T>({
     return () => {
       active = false;
     };
-  }, [fields, open]);
+  }, [fields, open, customers]);
 
   // Helper functions for input types
   const getInputType = (field: CrudField) => {

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import SearchableCustomerInput from "./SearchableCustomerInput";
 import { useToastHelpers } from "@/components/ui/Toast";
+import { useCustomer } from "@/lib/hooks/useCustomers";
 
 // Debug helpers to gate console logs in production
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === 'true';
@@ -201,26 +202,15 @@ export default function TransactionFormModal({
     }
     }, [initial, open]);
 
-  // Load initial customer name when editing
+  // Load initial customer name when editing (refactored to use useCustomer)
+  const { customer: initialCustomer } = useCustomer(initial?.customer_id ?? 0, false, Boolean(initial?.customer_id && open));
   useEffect(() => {
-    async function loadInitialCustomerName() {
-      if (initial?.customer_id && open) {
-        try {
-          const res = await fetch(`/api/customers?id=${initial.customer_id}`);
-          const result = await res.json();
-          const customerData = result.data[0];
-          setInitialCustomerName(customerData?.full_name || "");
-        } catch (err) {
-          debugError('Error loading initial customer name:', err);
-          setInitialCustomerName("");
-        }
-      } else {
-        setInitialCustomerName("");
-      }
+    if (initialCustomer && open) {
+      setInitialCustomerName(initialCustomer.full_name || "");
+    } else if (!open || !initial?.customer_id) {
+      setInitialCustomerName("");
     }
-    
-    loadInitialCustomerName();
-  }, [initial?.customer_id, open]);
+  }, [initialCustomer, open, initial?.customer_id]);
 
   // Debug: Log when values change
   useEffect(() => {

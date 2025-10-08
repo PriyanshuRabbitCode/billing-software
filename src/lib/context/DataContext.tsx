@@ -264,7 +264,7 @@ export function DataProvider({ children }: DataProviderProps) {
     const run = async () => {
       try {
         const params = new URLSearchParams();
-        if (include === 'relations') params.append('include', 'relations');
+        if (include === 'relations') params.append('include', 'cards,transactions,accounts,tax_details,identity_documents,card_pending_amounts');
         if (forceRefresh) params.append('refresh', 'true');
 
         const response = await fetch(`/api/customers?${params.toString()}`);

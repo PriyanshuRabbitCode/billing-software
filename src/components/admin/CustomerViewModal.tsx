@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { User, CreditCard, FileText, Receipt, Building, MapPin, Phone, Mail, Calendar, Download } from "lucide-react";
 import PaymentModal from "./PaymentModal";
+import { useCustomer } from "@/lib/hooks/useCustomers";
 
 interface CustomerViewModalProps {
   open: boolean;
@@ -34,13 +35,40 @@ export default function CustomerViewModal({
   const DEBUG = process.env.NEXT_PUBLIC_DEBUG === 'true';
   const debugLog = (...args: any[]) => { if (DEBUG) console.log(...args); };
   const debugError = (...args: any[]) => { if (DEBUG) console.error(...args); };
+  const { customer: fetchedCustomer, loading: loadingFromQuery, error: errorFromQuery, refetch } = useCustomer(customer?.id ?? 0, true, Boolean(open && customer?.id));
+  useEffect(() => {
+    setLoading(loadingFromQuery);
+  }, [loadingFromQuery]);
   useEffect(() => {
     debugLog('CustomerViewModal: open =', open, 'customer =', customer);
-    if (open && customer) {
-      loadCustomerData();
-    }
+    // Deprecated: direct fetch replaced by useCustomer
   }, [open, customer, customer?.id]);
-
+  // Populate state from fetched customer relations
+  useEffect(() => {
+    if (open && fetchedCustomer) {
+      setCustomerData(fetchedCustomer);
+      const taxData = fetchedCustomer.tax_details || [];
+      const identityData = fetchedCustomer.identity_documents || [];
+      const accountsData = fetchedCustomer.accounts || [];
+      const cardsData = fetchedCustomer.cards || [];
+      const transactionsData = fetchedCustomer.transactions || [];
+      const cardPendingData = fetchedCustomer.card_pending_amounts || [];
+      setTaxDetails(taxData);
+      setIdentityDocuments(identityData);
+      setAccounts(accountsData);
+      setCards(cardsData);
+      setTransactions(transactionsData);
+      setCardPendingAmounts(cardPendingData);
+    } else if (!open) {
+      setCustomerData(null);
+      setTaxDetails([]);
+      setIdentityDocuments([]);
+      setAccounts([]);
+      setCards([]);
+      setTransactions([]);
+      setCardPendingAmounts([]);
+    }
+  }, [open, fetchedCustomer]);
   useEffect(() => {
     debugLog('CustomerViewModal: taxDetails state changed =', taxDetails);
   }, [taxDetails]);
@@ -48,66 +76,6 @@ export default function CustomerViewModal({
   useEffect(() => {
     debugLog('CustomerViewModal: identityDocuments state changed =', identityDocuments);
   }, [identityDocuments]);
-
-  const loadCustomerData = async () => {
-    if (!customer?.id) return;
-    
-    setLoading(true);
-    try {
-      // Use the new consolidated API with relations
-      const customerRes = await fetch(`/api/customers?id=${customer.id}&include=cards,transactions,accounts,tax_details,identity_documents,card_pending_amounts`);
-      
-      if (!customerRes.ok) {
-        throw new Error(`Failed to fetch customer data: ${customerRes.status}`);
-      }
-      
-      const result = await customerRes.json();
-      const customerWithRelations = result.data[0];
-      
-      if (!customerWithRelations) {
-        throw new Error('Customer not found');
-      }
-
-      debugLog('Customer data loaded:', customerWithRelations);
-      debugLog('Tax details:', customerWithRelations.tax_details);
-      debugLog('Identity documents:', customerWithRelations.identity_documents);
-      debugLog('Accounts:', customerWithRelations.accounts);
-      debugLog('Cards:', customerWithRelations.cards);
-      debugLog('Card Pending Amounts:', customerWithRelations.card_pending_amounts);
-      
-      setCustomerData(customerWithRelations);
-      
-      const taxData = customerWithRelations.tax_details || [];
-      const identityData = customerWithRelations.identity_documents || [];
-      const accountsData = customerWithRelations.accounts || [];
-      const cardsData = customerWithRelations.cards || [];
-      const transactionsData = customerWithRelations.transactions || [];
-      const cardPendingData = customerWithRelations.card_pending_amounts || [];
-      
-      debugLog('Setting state - Tax details:', taxData);
-      debugLog('Setting state - Identity documents:', identityData);
-      debugLog('Setting state - Accounts:', accountsData);
-      
-      setTaxDetails(taxData);
-      setIdentityDocuments(identityData);
-      setAccounts(accountsData);
-      setCards(cardsData);
-      setTransactions(transactionsData);
-      setCardPendingAmounts(cardPendingData);
-    } catch (error) {
-      debugError('Error loading customer data:', error);
-      // Fallback: use the original customer data
-      setCustomerData(customer);
-      setTaxDetails([]);
-      setIdentityDocuments([]);
-      setAccounts([]);
-      setCards([]);
-      setTransactions([]);
-      setCardPendingAmounts([]);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -171,7 +139,7 @@ export default function CustomerViewModal({
     
     // Refresh the customer data to get updated transactions and pending amounts
     try {
-      await loadCustomerData();
+      await refetch();
     } catch (error) {
       debugError('Error refreshing customer data after payment:', error);
       // If refresh fails, at least we have the optimistic update

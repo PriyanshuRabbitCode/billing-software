@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (cardNumber) {
-      whereConditions.push(`t.card_number = $${paramIndex}`);
+      whereConditions.push(`REPLACE(t.card_number, ' ', '') = REPLACE($${paramIndex}, ' ', '')`);
       queryParams.push(cardNumber);
       paramIndex++;
     }
@@ -127,18 +127,19 @@ export async function GET(request: NextRequest) {
 
     // Include card details if requested or if card_number exists
     if ((include.includes('cards') || transactions.some(t => t.card_number)) && transactions.length > 0) {
-      const cardNumbers = [...new Set(transactions.map(t => t.card_number).filter(Boolean))];
-      if (cardNumbers.length > 0) {
+      const cardNumbersClean = [...new Set(transactions.map(t => t.card_number).filter(Boolean).map(n => String(n).replace(/\s/g, '')))];
+      if (cardNumbersClean.length > 0) {
         const cardQuery = `
-          SELECT card_number, card_name, bank_name, card_type
+          SELECT REPLACE(card_number, ' ', '') AS norm_card_number, card_name, bank_name, card_type
           FROM card_details 
-          WHERE card_number = ANY($1::text[])
+          WHERE REPLACE(card_number, ' ', '') = ANY($1::text[])
         `;
-        const { rows: cards } = await query(cardQuery, [cardNumbers]);
-        const cardMap = new Map(cards.map(c => [c.card_number, c]));
+        const { rows: cards } = await query(cardQuery, [cardNumbersClean]);
+        const cardMap = new Map(cards.map((c: any) => [c.norm_card_number, c]));
         transactions.forEach(transaction => {
-          if (transaction.card_number) {
-            const cardDetails = cardMap.get(transaction.card_number);
+          const n = String(transaction.card_number || '').replace(/\s/g, '');
+          if (n) {
+            const cardDetails = cardMap.get(n);
             if (cardDetails) {
               // Only update card_name if it's not already set
               if (!transaction.card_name) {
@@ -299,12 +300,13 @@ export async function POST(request: NextRequest) {
     let finalPosType = pos_type;
     let finalTaxRate = tax_rate;
     let finalMdrRate = mdr_amount;
+    let finalCardName = card_name;
     
-    if (withdraw > 0 && card_number && (!finalPosType || !finalTaxRate || !finalMdrRate)) {
+    if (withdraw > 0 && card_number && (!finalPosType || !finalTaxRate || !finalMdrRate || !finalCardName)) {
       try {
         // Get card details to check for default values
         const { rows: cardDetails } = await query(
-          'SELECT enable_defaults, default_pos_type, default_tax_rate, default_mdr_rate FROM card_details WHERE card_number = $1',
+          "SELECT enable_defaults, default_pos_type, default_tax_rate, default_mdr_rate, card_name FROM card_details WHERE REPLACE(card_number, ' ' , '') = REPLACE($1, ' ' , '')",
           [card_number]
         );
         
@@ -316,15 +318,19 @@ export async function POST(request: NextRequest) {
             finalPosType = card.default_pos_type;
           }
           
-          // Auto-fill tax rate if not provided
-          if (!finalTaxRate && card.default_tax_rate) {
-            finalTaxRate = card.default_tax_rate.toString();
+          // Auto-fill Tax rate if not provided
+          if (!finalTaxRate && card.default_tax_rate !== null && card.default_tax_rate !== undefined) {
+            finalTaxRate = card.default_tax_rate;
           }
           
           // Auto-fill MDR rate if not provided
-          if (!finalMdrRate && card.default_mdr_rate) {
-            finalMdrRate = card.default_mdr_rate.toString();
+          if (!finalMdrRate && card.default_mdr_rate !== null && card.default_mdr_rate !== undefined) {
+            finalMdrRate = card.default_mdr_rate;
           }
+        }
+        // Fill card_name from card_details if missing
+        if (!finalCardName && cardDetails.length > 0 && cardDetails[0].card_name) {
+          finalCardName = cardDetails[0].card_name;
         }
       } catch (error) {
         // Suppressed verbose warning in production
@@ -411,7 +417,7 @@ export async function POST(request: NextRequest) {
     `;
     
     const { rows } = await query(insertQuery, [
-      customer_id, card_number, card_name, deposit, withdraw,
+      customer_id, card_number, finalCardName, deposit, withdraw,
       payableAmountNum, addTaxBool, finalPosType, finalTaxRateNum, finalTaxAmountNum,
       finalMdrRateNum, finalMdrChargeAmountNum, finalProfitAmountNum, finalPendingAmountNum, finalStatus
     ]);

@@ -252,17 +252,16 @@ export async function GET(request: NextRequest) {
       const { rows: cardPendingAmounts } = await query(`
         SELECT 
           t.customer_id,
-          TRIM(t.card_number) as card_number,
+          REPLACE(t.card_number, ' ', '') as card_number,
           MAX(t.card_name) as card_name,
           COALESCE(SUM(t.deposit_amount), 0) as received_amount,
           GREATEST(COALESCE(SUM(t.pending_amount), 0), 0) as pending_amount
         FROM transactions t
         WHERE t.customer_id = ANY($1) 
           AND t.card_number IS NOT NULL 
-          AND TRIM(t.card_number) != ''
-        GROUP BY t.customer_id, TRIM(t.card_number)
-        HAVING COALESCE(SUM(t.deposit_amount), 0) > 0
-        ORDER BY t.customer_id, TRIM(t.card_number)
+          AND REPLACE(t.card_number, ' ', '') != ''
+        GROUP BY t.customer_id, REPLACE(t.card_number, ' ', '')
+        ORDER BY t.customer_id, REPLACE(t.card_number, ' ', '')
       `, [customerIds]);
       
       // Add customer names to the card pending amounts data

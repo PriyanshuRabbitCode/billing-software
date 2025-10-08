@@ -203,6 +203,29 @@ export default function CardDetailsFormModal({
       });
     }
     
+    // Real-time validation: Due Day must be an integer between 1 and 31
+    if (name === 'due_day') {
+      const raw = value === null || value === undefined ? '' : String(value);
+      setErrors(prev => {
+        const next = { ...prev };
+        const trimmed = raw.trim();
+        if (trimmed === '') {
+          next.due_day = "Please enter a valid day between 1 and 31";
+        } else if (!/^\d{1,2}$/.test(trimmed)) {
+          next.due_day = "Please enter a valid day between 1 and 31";
+        } else {
+          const n = parseInt(trimmed, 10);
+          if (Number.isNaN(n) || n < 1 || n > 31) {
+            next.due_day = "Please enter a valid day between 1 and 31";
+          } else {
+            const { due_day, ...rest } = next;
+            return rest;
+          }
+        }
+        return next;
+      });
+    }
+    
     // Real-time validation: Default MDR % cannot be greater than Default Tax Rate %
     if (name === 'default_tax_rate' || name === 'default_mdr_rate') {
       const taxRaw = name === 'default_tax_rate' ? value : newValues.default_tax_rate;
@@ -267,6 +290,20 @@ export default function CardDetailsFormModal({
         e.card_number = "Card number must be exactly 16 digits";
       }
     }
+    // Strict validation for due_day: required and must be 1-31
+    {
+      const ddRaw = values.due_day;
+      const ddStr = ddRaw === undefined || ddRaw === null ? '' : String(ddRaw);
+      const trimmed = ddStr.trim();
+      if (trimmed === '') {
+        e.due_day = "Please enter a valid day between 1 and 31";
+      } else {
+        const dd = Number(trimmed);
+        if (!Number.isFinite(dd) || dd < 1 || dd > 31) {
+          e.due_day = "Please enter a valid day between 1 and 31";
+        }
+      }
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -309,6 +346,17 @@ export default function CardDetailsFormModal({
       setLoading(false);
     }
   };
+
+  // Compute due_day invalid state for disabling Save button
+  const dueDayRaw = values.due_day;
+  const dueDayStr = dueDayRaw === undefined || dueDayRaw === null ? '' : String(dueDayRaw);
+  const isDueDayInvalid = (() => {
+    const s = dueDayStr.trim();
+    if (s === '') return true;
+    if (!/^\d{1,2}$/.test(s)) return true;
+    const n = parseInt(s, 10);
+    return Number.isNaN(n) || n < 1 || n > 31;
+  })();
 
   if (!open) return null;
 
@@ -433,7 +481,7 @@ export default function CardDetailsFormModal({
               min={1}
               max={31}
               value={(values.due_day as number | string) ?? ""}
-              onChange={(e) => handleChange('due_day', e.target.value ? Number(e.target.value) : "")}
+              onChange={(e) => handleChange('due_day', e.target.value)}
               placeholder="1-31"
               className="bg-gray-800 border border-gray-700 rounded px-3 py-2"
             />
@@ -510,7 +558,7 @@ export default function CardDetailsFormModal({
           <button onClick={handleClose} className="px-4 py-2 rounded bg-gray-800 border border-gray-700">Cancel</button>
           <button
             onClick={submit}
-            disabled={loading}
+            disabled={loading || isDueDayInvalid}
             className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-60"
           >
             {loading ? "Saving..." : "Save"}
